@@ -1,0 +1,211 @@
+{
+  "entities": {
+    "Room": {
+      "title": "Room",
+      "description": "Multiplayer game room controlled by a host/teacher for up to 25 students.",
+      "type": "object",
+      "properties": {
+        "roomCode": {
+          "type": "string",
+          "description": "Unique 6-character uppercase alphanumeric room code.",
+          "minLength": 6,
+          "maxLength": 6,
+          "pattern": "^[A-Z0-9]{6}$"
+        },
+        "hostUid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the room host.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "hostName": {
+          "type": "string",
+          "description": "Display name of the host/teacher.",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "status": {
+          "type": "string",
+          "description": "Lifecycle status of the multiplayer session.",
+          "enum": ["waiting", "countdown", "playing", "finished"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the room was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the last room state transition."
+        },
+        "countdownStartedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when synchronized 3-2-1-GO countdown began."
+        },
+        "startTime": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when active gameplay began."
+        },
+        "endTime": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the host ended the game."
+        },
+        "challengeSeed": {
+          "type": "integer",
+          "description": "Deterministic seed ensuring identical challenge order for all players in the room."
+        },
+        "roundNumber": {
+          "type": "integer",
+          "description": "Current session round number, incremented when host triggers Play Again."
+        },
+        "maxPlayers": {
+          "type": "integer",
+          "description": "Maximum students allowed per room (25)."
+        },
+        "playerCount": {
+          "type": "integer",
+          "description": "Current number of joined students in the room."
+        }
+      },
+      "required": [
+        "roomCode",
+        "hostUid",
+        "hostName",
+        "status",
+        "createdAt",
+        "updatedAt",
+        "challengeSeed",
+        "roundNumber",
+        "maxPlayers",
+        "playerCount"
+      ]
+    },
+    "Player": {
+      "title": "Player",
+      "description": "Student participant inside a multiplayer room.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the student.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "description": "Student display name (unique per room).",
+          "minLength": 1,
+          "maxLength": 30
+        },
+        "normalizedKey": {
+          "type": "string",
+          "description": "Hex/safe slug key corresponding to the student's unique name lock.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "avatarColor": {
+          "type": "string",
+          "description": "Hex color for player avatar badge.",
+          "minLength": 4,
+          "maxLength": 20
+        },
+        "score": {
+          "type": "integer",
+          "description": "Current accumulated player score."
+        },
+        "level": {
+          "type": "integer",
+          "description": "Current player level (starts at 1)."
+        },
+        "lives": {
+          "type": "integer",
+          "description": "Remaining lives (0 to 5)."
+        },
+        "completed": {
+          "type": "integer",
+          "description": "Challenges completed in current level (0 to 15)."
+        },
+        "totalCompleted": {
+          "type": "integer",
+          "description": "Total challenges completed across all levels in the round."
+        },
+        "status": {
+          "type": "string",
+          "description": "Connection or elimination state of the player.",
+          "enum": ["connected", "disconnected", "eliminated"]
+        },
+        "roundNumber": {
+          "type": "integer",
+          "description": "Round number matching the room's current round."
+        },
+        "joinedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the student joined."
+        },
+        "lastSeen": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the player's latest heartbeat."
+        }
+      },
+      "required": [
+        "uid",
+        "name",
+        "normalizedKey",
+        "avatarColor",
+        "score",
+        "level",
+        "lives",
+        "completed",
+        "totalCompleted",
+        "status",
+        "roundNumber",
+        "joinedAt",
+        "lastSeen"
+      ]
+    },
+    "PlayerNameLock": {
+      "title": "PlayerNameLock",
+      "description": "Atomic uniqueness lock preventing duplicate student names in the same room.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "UID of the student holding this name lock.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "description": "Original display name locked.",
+          "minLength": 1,
+          "maxLength": 30
+        }
+      },
+      "required": ["uid", "name"]
+    }
+  },
+  "firestore": {
+    "/rooms/{roomCode}": {
+      "schema": { "$ref": "#/entities/Room" },
+      "description": "Multiplayer game room state, host metadata, shared seed, and synchronized timers."
+    },
+    "/rooms/{roomCode}/players/{playerId}": {
+      "schema": { "$ref": "#/entities/Player" },
+      "description": "Individual student state, score, lives, level, and connection status inside a room."
+    },
+    "/rooms/{roomCode}/names/{nameKey}": {
+      "schema": { "$ref": "#/entities/PlayerNameLock" },
+      "description": "Uniqueness lock ensuring no two students in the same room share the same name."
+    }
+  }
+}

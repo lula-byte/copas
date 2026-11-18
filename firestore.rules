@@ -1,0 +1,341 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. Reusable Primitives
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidRoomCode(code) {
+      return code is string && code.size() == 6 && code.matches('^[A-Z0-9]{6}$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function roomPath(roomCode) {
+      return /databases/$(database)/documents/rooms/$(roomCode);
+    }
+
+    function getRoom(roomCode) {
+      return get(roomPath(roomCode)).data;
+    }
+
+    function getRoomAfter(roomCode) {
+      return getAfter(roomPath(roomCode)).data;
+    }
+
+    function isRoomHost(roomCode) {
+      return isSignedIn() && exists(roomPath(roomCode)) && getRoom(roomCode).hostUid == request.auth.uid;
+    }
+
+    // 3. Entity Validation Blueprints
+    function isValidRoom(data, roomCode) {
+      return data.keys().hasAll([
+        'roomCode', 'hostUid', 'hostName', 'status', 'createdAt', 'updatedAt',
+        'challengeSeed', 'roundNumber', 'maxPlayers', 'playerCount'
+      ])
+      && data.keys().hasOnly([
+        'roomCode', 'hostUid', 'hostName', 'status', 'createdAt', 'updatedAt',
+        'countdownStartedAt', 'startTime', 'endTime',
+        'challengeSeed', 'roundNumber', 'maxPlayers', 'playerCount'
+      ])
+      && data.roomCode is string && data.roomCode == roomCode && isValidRoomCode(data.roomCode)
+      && data.hostUid is string && isValidId(data.hostUid)
+      && data.hostName is string && data.hostName.size() >= 1 && data.hostName.size() <= 40
+      && data.status in ['waiting', 'countdown', 'playing', 'finished']
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp
+      && (!('countdownStartedAt' in data) || data.countdownStartedAt == null || data.countdownStartedAt is timestamp)
+      && (!('startTime' in data) || data.startTime == null || data.startTime is timestamp)
+      && (!('endTime' in data) || data.endTime == null || data.endTime is timestamp)
+      && data.challengeSeed is int && data.challengeSeed >= 1
+      && data.roundNumber is int && data.roundNumber >= 1
+      && data.maxPlayers is int && data.maxPlayers == 25
+      && data.playerCount is int && data.playerCount >= 0 && data.playerCount <= 25;
+    }
+
+    function isValidPlayer(data, playerId) {
+      return data.keys().hasAll([
+        'uid', 'name', 'normalizedKey', 'avatarColor', 'score', 'level',
+        'lives', 'completed', 'totalCompleted', 'status', 'roundNumber',
+        'joinedAt', 'lastSeen'
+      ])
+      && data.keys().hasOnly([
+        'uid', 'name', 'normalizedKey', 'avatarColor', 'score', 'level',
+        'lives', 'completed', 'totalCompleted', 'status', 'roundNumber',
+        'joinedAt', 'lastSeen'
+      ])
+      && data.uid is string && data.uid == playerId && isValidId(data.uid)
+      && data.name is string && data.name.size() >= 1 && data.name.size() <= 30
+      && data.normalizedKey is string && isValidId(data.normalizedKey)
+      && data.avatarColor is string && data.avatarColor.size() >= 4 && data.avatarColor.size() <= 20
+      && data.score is int && data.score >= 0 && data.score <= 1000000
+      && data.level is int && data.level >= 1 && data.level <= 999
+      && data.lives is int && data.lives >= 0 && data.lives <= 5
+      && data.completed is int && data.completed >= 0 && data.completed <= 15
+      && data.totalCompleted is int && data.totalCompleted >= 0 && data.totalCompleted <= 10000
+      && data.status in ['connected', 'disconnected', 'eliminated']
+      && data.roundNumber is int && data.roundNumber >= 1
+      && data.joinedAt is timestamp
+      && data.lastSeen is timestamp;
+    }
+
+    function isValidNameLock(data) {
+      return data.keys().hasAll(['uid', 'name'])
+        && data.keys().hasOnly(['uid', 'name'])
+        && data.uid is string && isValidId(data.uid)
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 30;
+    }
+
+    // 4. Connection check document
+    match /test/{docId} {
+      allow get: if isSignedIn() && isValidId(docId);
+    }
+
+    // 5. Rooms Collection
+    match /rooms/{roomCode} {
+      allow get: if isSignedIn() && isValidRoomCode(roomCode);
+      allow list: if false;
+
+      // Host creates room
+      allow create: if isSignedIn()
+        && isValidRoomCode(roomCode)
+        && isValidRoom(incoming(), roomCode)
+        && incoming().hostUid == request.auth.uid
+        && incoming().status == 'waiting'
+        && incoming().playerCount == 0
+        && incoming().roundNumber == 1
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      // Updates split into strict Action branches
+      allow update: if isSignedIn()
+        && isValidRoomCode(roomCode)
+        && isValidRoom(incoming(), roomCode)
+        && incoming().roomCode == existing().roomCode
+        && incoming().hostUid == existing().hostUid
+        && incoming().createdAt == existing().createdAt
+        && incoming().maxPlayers == existing().maxPlayers
+        && incoming().updatedAt == request.time
+        && (
+          // Action A: Host starts countdown from waiting (requires >= 1 player)
+          (
+            existing().hostUid == request.auth.uid
+            && existing().status == 'waiting'
+            && incoming().status == 'countdown'
+            && existing().playerCount >= 1
+            && incoming().countdownStartedAt == request.time
+            && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'countdownStartedAt', 'updatedAt'])
+          )
+          // Action B: Host transitions countdown -> playing
+          || (
+            existing().hostUid == request.auth.uid
+            && existing().status == 'countdown'
+            && incoming().status == 'playing'
+            && incoming().startTime == request.time
+            && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'startTime', 'updatedAt'])
+          )
+          // Action C: Host ends game -> finished
+          || (
+            existing().hostUid == request.auth.uid
+            && existing().status in ['countdown', 'playing']
+            && incoming().status == 'finished'
+            && incoming().endTime == request.time
+            && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'endTime', 'updatedAt'])
+          )
+          // Action D: Host resets room for PLAY AGAIN
+          || (
+            existing().hostUid == request.auth.uid
+            && existing().status == 'finished'
+            && incoming().status == 'waiting'
+            && incoming().roundNumber == existing().roundNumber + 1
+            && incoming().countdownStartedAt == null
+            && incoming().startTime == null
+            && incoming().endTime == null
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'status', 'roundNumber', 'challengeSeed', 'countdownStartedAt', 'startTime', 'endTime', 'updatedAt'
+            ])
+          )
+          // Action E: Student joins room (atomic +1 playerCount, only while waiting and < 25, and not already joined)
+          || (
+            existing().status == 'waiting'
+            && existing().playerCount < 25
+            && incoming().playerCount == existing().playerCount + 1
+            && incoming().diff(existing()).affectedKeys().hasOnly(['playerCount', 'updatedAt'])
+            && !exists(/databases/$(database)/documents/rooms/$(roomCode)/players/$(request.auth.uid))
+            && existsAfter(/databases/$(database)/documents/rooms/$(roomCode)/players/$(request.auth.uid))
+          )
+          // Action F: Student leaves waiting room (atomic -1 playerCount)
+          || (
+            existing().status == 'waiting'
+            && existing().playerCount > 0
+            && incoming().playerCount == existing().playerCount - 1
+            && incoming().diff(existing()).affectedKeys().hasOnly(['playerCount', 'updatedAt'])
+            && exists(/databases/$(database)/documents/rooms/$(roomCode)/players/$(request.auth.uid))
+            && !existsAfter(/databases/$(database)/documents/rooms/$(roomCode)/players/$(request.auth.uid))
+          )
+        );
+
+      // Only host can close/delete the room
+      allow delete: if isSignedIn()
+        && isValidRoomCode(roomCode)
+        && existing().hostUid == request.auth.uid;
+
+      // 6. Players Subcollection
+      match /players/{playerId} {
+        allow get: if isSignedIn() && isValidRoomCode(roomCode) && isValidId(playerId);
+        allow list: if isSignedIn() && isValidRoomCode(roomCode) && resource.data.roundNumber >= 1;
+
+        // New student joins while room is waiting and below 25 players, with atomic name lock + playerCount increment
+        allow create: if isSignedIn()
+          && isValidRoomCode(roomCode)
+          && isValidId(playerId)
+          && playerId == request.auth.uid
+          && isValidPlayer(incoming(), playerId)
+          && exists(roomPath(roomCode))
+          && getRoom(roomCode).status == 'waiting'
+          && getRoom(roomCode).playerCount < 25
+          && incoming().score == 0
+          && incoming().level == 1
+          && incoming().lives == 5
+          && incoming().completed == 0
+          && incoming().totalCompleted == 0
+          && incoming().status == 'connected'
+          && incoming().roundNumber == getRoom(roomCode).roundNumber
+          && incoming().joinedAt == request.time
+          && incoming().lastSeen == request.time
+          && getRoomAfter(roomCode).playerCount == getRoom(roomCode).playerCount + 1
+          && existsAfter(/databases/$(database)/documents/rooms/$(roomCode)/names/$(incoming().normalizedKey))
+          && getAfter(/databases/$(database)/documents/rooms/$(roomCode)/names/$(incoming().normalizedKey)).data.uid == request.auth.uid;
+
+        // Player updates split into strict Action branches
+        allow update: if isSignedIn()
+          && isValidRoomCode(roomCode)
+          && isValidId(playerId)
+          && isValidPlayer(incoming(), playerId)
+          && exists(roomPath(roomCode))
+          && incoming().uid == existing().uid
+          && incoming().name == existing().name
+          && incoming().normalizedKey == existing().normalizedKey
+          && incoming().avatarColor == existing().avatarColor
+          && incoming().joinedAt == existing().joinedAt
+          && incoming().lastSeen == request.time
+          && (
+            // Action 1: Host resets player for PLAY AGAIN
+            (
+              getRoom(roomCode).hostUid == request.auth.uid
+              && getRoomAfter(roomCode).roundNumber == existing().roundNumber + 1
+              && incoming().roundNumber == existing().roundNumber + 1
+              && incoming().score == 0
+              && incoming().level == 1
+              && incoming().lives == 5
+              && incoming().completed == 0
+              && incoming().totalCompleted == 0
+              && incoming().status == 'connected'
+              && incoming().diff(existing()).affectedKeys().hasOnly([
+                'score', 'level', 'lives', 'completed', 'totalCompleted', 'status', 'roundNumber', 'lastSeen'
+              ])
+            )
+            // Action 2: Player presence / reconnect heartbeat (cannot alter score/lives/level/completed or revive eliminated)
+            || (
+              playerId == request.auth.uid
+              && getRoom(roomCode).status != 'finished'
+              && existing().status != 'eliminated'
+              && incoming().status in ['connected', 'disconnected']
+              && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'lastSeen'])
+            )
+            // Action 3: Player completes a challenge (in same level or leveling up on 15/15)
+            || (
+              playerId == request.auth.uid
+              && getRoom(roomCode).status == 'playing'
+              && existing().status != 'eliminated'
+              && existing().lives > 0
+              && incoming().status == 'connected'
+              && incoming().totalCompleted == existing().totalCompleted + 1
+              && incoming().score == existing().score + (10 * existing().level)
+              && (
+                (
+                  existing().completed < 14
+                  && incoming().completed == existing().completed + 1
+                  && incoming().level == existing().level
+                  && incoming().lives == existing().lives
+                  && incoming().diff(existing()).affectedKeys().hasOnly([
+                    'score', 'completed', 'totalCompleted', 'status', 'lastSeen'
+                  ])
+                )
+                || (
+                  existing().completed == 14
+                  && incoming().completed == 0
+                  && incoming().level == existing().level + 1
+                  && incoming().lives == 5
+                  && incoming().diff(existing()).affectedKeys().hasOnly([
+                    'score', 'level', 'lives', 'completed', 'totalCompleted', 'status', 'lastSeen'
+                  ])
+                )
+              )
+            )
+            // Action 4: Player misses a card (-1 life, or eliminated when lives reaches 0)
+            || (
+              playerId == request.auth.uid
+              && getRoom(roomCode).status == 'playing'
+              && existing().status != 'eliminated'
+              && existing().lives > 0
+              && incoming().lives == existing().lives - 1
+              && (
+                (incoming().lives > 0 && incoming().status == 'connected')
+                || (incoming().lives == 0 && incoming().status == 'eliminated')
+              )
+              && incoming().diff(existing()).affectedKeys().hasOnly(['lives', 'status', 'lastSeen'])
+            )
+          );
+
+        allow delete: if isSignedIn()
+          && isValidRoomCode(roomCode)
+          && isValidId(playerId)
+          && (
+            (playerId == request.auth.uid && exists(roomPath(roomCode)) && getRoom(roomCode).status == 'waiting')
+            || isRoomHost(roomCode)
+          );
+      }
+
+      // 7. Player Name Uniqueness Locks
+      match /names/{nameKey} {
+        allow get: if isSignedIn() && isValidRoomCode(roomCode) && isValidId(nameKey);
+        allow list: if false;
+
+        allow create: if isSignedIn()
+          && isValidRoomCode(roomCode)
+          && isValidId(nameKey)
+          && isValidNameLock(incoming())
+          && incoming().uid == request.auth.uid
+          && exists(roomPath(roomCode))
+          && getRoom(roomCode).status == 'waiting';
+
+        allow update: if false;
+
+        allow delete: if isSignedIn()
+          && isValidRoomCode(roomCode)
+          && isValidId(nameKey)
+          && (
+            (existing().uid == request.auth.uid && exists(roomPath(roomCode)) && getRoom(roomCode).status == 'waiting')
+            || isRoomHost(roomCode)
+          );
+      }
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "BLOK, COPY & PASTE",
+  "description": "Game edukasi multiplayer Informatika SMP untuk menguasai teknik blok teks, copy, dan paste secara real-time.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
