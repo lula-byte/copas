@@ -192,6 +192,262 @@
         }
       },
       "required": ["uid", "name"]
+    },
+    "LeaderboardEntry": {
+      "title": "LeaderboardEntry",
+      "description": "Top-20-only leaderboard record for a qualifying player in the active room round.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the ranked student.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "description": "Student display name.",
+          "minLength": 1,
+          "maxLength": 30
+        },
+        "avatarColor": {
+          "type": "string",
+          "description": "Hex color for player avatar badge.",
+          "minLength": 4,
+          "maxLength": 20
+        },
+        "score": {
+          "type": "integer",
+          "description": "Player score (must be > 0 to qualify)."
+        },
+        "level": {
+          "type": "integer",
+          "description": "Highest level reached by the player."
+        },
+        "completed": {
+          "type": "integer",
+          "description": "Current level challenge progress (0 to 15)."
+        },
+        "totalCompleted": {
+          "type": "integer",
+          "description": "Total challenges completed across the round."
+        },
+        "lives": {
+          "type": "integer",
+          "description": "Remaining lives (0 to 5)."
+        },
+        "status": {
+          "type": "string",
+          "description": "Player status.",
+          "enum": ["connected", "disconnected", "eliminated"]
+        },
+        "roundNumber": {
+          "type": "integer",
+          "description": "Round number matching the active room session."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the latest leaderboard update."
+        }
+      },
+      "required": [
+        "uid",
+        "name",
+        "avatarColor",
+        "score",
+        "level",
+        "completed",
+        "totalCompleted",
+        "lives",
+        "status",
+        "roundNumber",
+        "updatedAt"
+      ]
+    },
+    "LeaderboardMeta": {
+      "title": "LeaderboardMeta",
+      "description": "Atomic Top-20 gatekeeper tracking count (max 20), active UIDs, and current rank #20 threshold.",
+      "type": "object",
+      "properties": {
+        "roundNumber": {
+          "type": "integer",
+          "description": "Current round number matching the room."
+        },
+        "count": {
+          "type": "integer",
+          "description": "Exact number of entries in leaderboard (0 to 20)."
+        },
+        "entryUids": {
+          "type": "array",
+          "description": "Bounded list (max 20) of player UIDs currently stored in leaderboard."
+        },
+        "minEntryUid": {
+          "type": "string",
+          "description": "UID of the lowest-ranked player currently in the leaderboard (rank #20 when full)."
+        },
+        "minScore": {
+          "type": "integer",
+          "description": "Score of the lowest-ranked player currently in leaderboard."
+        },
+        "minLevel": {
+          "type": "integer",
+          "description": "Level of the lowest-ranked player currently in leaderboard."
+        },
+        "minTotalCompleted": {
+          "type": "integer",
+          "description": "Total completed count of the lowest-ranked player currently in leaderboard."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the last leaderboard state update."
+        }
+      },
+      "required": [
+        "roundNumber",
+        "count",
+        "entryUids",
+        "minScore",
+        "minLevel",
+        "minTotalCompleted",
+        "updatedAt"
+      ]
+    },
+    "SoloLeaderboardEntry": {
+      "title": "SoloLeaderboardEntry",
+      "description": "Dedicated leaderboard record for independent Solo mode runs (strictly isolated from Multiplayer).",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the Solo player.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "description": "Solo player display name.",
+          "minLength": 1,
+          "maxLength": 30
+        },
+        "avatarColor": {
+          "type": "string",
+          "description": "Hex color for player avatar badge.",
+          "minLength": 4,
+          "maxLength": 20
+        },
+        "score": {
+          "type": "integer",
+          "description": "Final Solo score."
+        },
+        "level": {
+          "type": "integer",
+          "description": "Highest level reached in the Solo run."
+        },
+        "totalCompleted": {
+          "type": "integer",
+          "description": "Total challenges completed in the Solo run."
+        },
+        "durationSeconds": {
+          "type": "integer",
+          "description": "Total duration of the Solo run in seconds."
+        },
+        "mode": {
+          "type": "string",
+          "description": "Strict mode marker ('solo').",
+          "enum": ["solo"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the Solo run finished."
+        }
+      },
+      "required": [
+        "uid",
+        "name",
+        "avatarColor",
+        "score",
+        "level",
+        "totalCompleted",
+        "durationSeconds",
+        "mode",
+        "createdAt"
+      ]
+    },
+    "MultiplayerLeaderboardEntry": {
+      "title": "MultiplayerLeaderboardEntry",
+      "description": "Global Multiplayer leaderboard record synced from verified room sessions (strictly isolated from Solo).",
+      "type": "object",
+      "properties": {
+        "roomCode": {
+          "type": "string",
+          "description": "Room code where the score was earned.",
+          "minLength": 6,
+          "maxLength": 6,
+          "pattern": "^[A-Z0-9]{6}$"
+        },
+        "roundNumber": {
+          "type": "integer",
+          "description": "Round number in the multiplayer room."
+        },
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the player.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "description": "Player display name.",
+          "minLength": 1,
+          "maxLength": 30
+        },
+        "avatarColor": {
+          "type": "string",
+          "description": "Hex color for player avatar badge.",
+          "minLength": 4,
+          "maxLength": 20
+        },
+        "score": {
+          "type": "integer",
+          "description": "Multiplayer score earned in the room."
+        },
+        "level": {
+          "type": "integer",
+          "description": "Highest level reached in the room."
+        },
+        "totalCompleted": {
+          "type": "integer",
+          "description": "Total challenges completed in the room."
+        },
+        "mode": {
+          "type": "string",
+          "description": "Strict mode marker ('multiplayer').",
+          "enum": ["multiplayer"]
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the latest score update."
+        }
+      },
+      "required": [
+        "roomCode",
+        "roundNumber",
+        "uid",
+        "name",
+        "avatarColor",
+        "score",
+        "level",
+        "totalCompleted",
+        "mode",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -206,6 +462,22 @@
     "/rooms/{roomCode}/names/{nameKey}": {
       "schema": { "$ref": "#/entities/PlayerNameLock" },
       "description": "Uniqueness lock ensuring no two students in the same room share the same name."
+    },
+    "/rooms/{roomCode}/leaderboard/{entryId}": {
+      "schema": { "$ref": "#/entities/LeaderboardEntry" },
+      "description": "Top-20-only leaderboard documents for the current room session. Rank 21+ is never stored."
+    },
+    "/rooms/{roomCode}/leaderboardMeta/{docId}": {
+      "schema": { "$ref": "#/entities/LeaderboardMeta" },
+      "description": "Top-20 gatekeeper document ('state') tracking count <= 20 and lowest-rank eviction threshold."
+    },
+    "/soloLeaderboard/{entryId}": {
+      "schema": { "$ref": "#/entities/SoloLeaderboardEntry" },
+      "description": "Dedicated leaderboard storing completed Solo mode scores."
+    },
+    "/multiplayerLeaderboard/{entryId}": {
+      "schema": { "$ref": "#/entities/MultiplayerLeaderboardEntry" },
+      "description": "Dedicated global Multiplayer leaderboard synced from verified room scores."
     }
   }
 }

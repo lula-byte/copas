@@ -39,8 +39,31 @@ service cloud.firestore {
       return getAfter(roomPath(roomCode)).data;
     }
 
+    function metaPath(roomCode) {
+      return /databases/$(database)/documents/rooms/$(roomCode)/leaderboardMeta/state;
+    }
+
+    function getMeta(roomCode) {
+      return get(metaPath(roomCode)).data;
+    }
+
+    function getMetaAfter(roomCode) {
+      return getAfter(metaPath(roomCode)).data;
+    }
+
+    function playerPath(roomCode, playerId) {
+      return /databases/$(database)/documents/rooms/$(roomCode)/players/$(playerId);
+    }
+
     function isRoomHost(roomCode) {
       return isSignedIn() && exists(roomPath(roomCode)) && getRoom(roomCode).hostUid == request.auth.uid;
+    }
+
+    // Compare candidate leaderboard entry against current rank #20 threshold
+    function outranksThreshold(entry, meta) {
+      return entry.score > meta.minScore
+        || (entry.score == meta.minScore && entry.level > meta.minLevel)
+        || (entry.score == meta.minScore && entry.level == meta.minLevel && entry.totalCompleted > meta.minTotalCompleted);
     }
 
     // 3. Entity Validation Blueprints
@@ -102,6 +125,50 @@ service cloud.firestore {
         && data.name is string && data.name.size() >= 1 && data.name.size() <= 30;
     }
 
+    function isValidLeaderboardEntry(data, entryId) {
+      return data.keys().hasAll([
+        'uid', 'name', 'avatarColor', 'score', 'level', 'completed',
+        'totalCompleted', 'lives', 'status', 'roundNumber', 'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'uid', 'name', 'avatarColor', 'score', 'level', 'completed',
+        'totalCompleted', 'lives', 'status', 'roundNumber', 'updatedAt'
+      ])
+      && data.uid is string && data.uid == entryId && isValidId(data.uid)
+      && data.name is string && data.name.size() >= 1 && data.name.size() <= 30
+      && data.avatarColor is string && data.avatarColor.size() >= 4 && data.avatarColor.size() <= 20
+      && data.score is int && data.score >= 1 && data.score <= 1000000
+      && data.level is int && data.level >= 1 && data.level <= 999
+      && data.completed is int && data.completed >= 0 && data.completed <= 15
+      && data.totalCompleted is int && data.totalCompleted >= 1 && data.totalCompleted <= 10000
+      && data.lives is int && data.lives >= 0 && data.lives <= 5
+      && data.status in ['connected', 'disconnected', 'eliminated']
+      && data.roundNumber is int && data.roundNumber >= 1
+      && data.updatedAt is timestamp;
+    }
+
+    function isValidLeaderboardMeta(data) {
+      return data.keys().hasAll([
+        'roundNumber', 'count', 'entryUids', 'minEntryUid',
+        'minScore', 'minLevel', 'minTotalCompleted', 'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'roundNumber', 'count', 'entryUids', 'minEntryUid',
+        'minScore', 'minLevel', 'minTotalCompleted', 'updatedAt'
+      ])
+      && data.roundNumber is int && data.roundNumber >= 1
+      && data.count is int && data.count >= 0 && data.count <= 20
+      && data.entryUids is list
+      && data.entryUids.size() == data.count
+      && data.entryUids.size() <= 20
+      && (data.entryUids.size() == 0 || data.entryUids[0] is string)
+      && (data.minEntryUid == null || (data.minEntryUid is string && isValidId(data.minEntryUid)))
+      && data.minScore is int && data.minScore >= 0 && data.minScore <= 1000000
+      && data.minLevel is int && data.minLevel >= 0 && data.minLevel <= 999
+      && data.minTotalCompleted is int && data.minTotalCompleted >= 0 && data.minTotalCompleted <= 10000
+      && data.updatedAt is timestamp;
+    }
+
     // 4. Connection check document
     match /test/{docId} {
       allow get: if isSignedIn() && isValidId(docId);
@@ -112,7 +179,6 @@ service cloud.firestore {
       allow get: if isSignedIn() && isValidRoomCode(roomCode);
       allow list: if false;
 
-      // Host creates room
       allow create: if isSignedIn()
         && isValidRoomCode(roomCode)
         && isValidRoom(incoming(), roomCode)
@@ -123,7 +189,6 @@ service cloud.firestore {
         && incoming().createdAt == request.time
         && incoming().updatedAt == request.time;
 
-      // Updates split into strict Action branches
       allow update: if isSignedIn()
         && isValidRoomCode(roomCode)
         && isValidRoom(incoming(), roomCode)
@@ -133,7 +198,6 @@ service cloud.firestore {
         && incoming().maxPlayers == existing().maxPlayers
         && incoming().updatedAt == request.time
         && (
-          // Action A: Host starts countdown from waiting (requires >= 1 player)
           (
             existing().hostUid == request.auth.uid
             && existing().status == 'waiting'
@@ -142,7 +206,6 @@ service cloud.firestore {
             && incoming().countdownStartedAt == request.time
             && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'countdownStartedAt', 'updatedAt'])
           )
-          // Action B: Host transitions countdown -> playing
           || (
             existing().hostUid == request.auth.uid
             && existing().status == 'countdown'
@@ -150,7 +213,6 @@ service cloud.firestore {
             && incoming().startTime == request.time
             && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'startTime', 'updatedAt'])
           )
-          // Action C: Host ends game -> finished
           || (
             existing().hostUid == request.auth.uid
             && existing().status in ['countdown', 'playing']
@@ -158,7 +220,6 @@ service cloud.firestore {
             && incoming().endTime == request.time
             && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'endTime', 'updatedAt'])
           )
-          // Action D: Host resets room for PLAY AGAIN
           || (
             existing().hostUid == request.auth.uid
             && existing().status == 'finished'
@@ -171,27 +232,24 @@ service cloud.firestore {
               'status', 'roundNumber', 'challengeSeed', 'countdownStartedAt', 'startTime', 'endTime', 'updatedAt'
             ])
           )
-          // Action E: Student joins room (atomic +1 playerCount, only while waiting and < 25, and not already joined)
           || (
             existing().status == 'waiting'
             && existing().playerCount < 25
             && incoming().playerCount == existing().playerCount + 1
             && incoming().diff(existing()).affectedKeys().hasOnly(['playerCount', 'updatedAt'])
-            && !exists(/databases/$(database)/documents/rooms/$(roomCode)/players/$(request.auth.uid))
-            && existsAfter(/databases/$(database)/documents/rooms/$(roomCode)/players/$(request.auth.uid))
+            && !exists(playerPath(roomCode, request.auth.uid))
+            && existsAfter(playerPath(roomCode, request.auth.uid))
           )
-          // Action F: Student leaves waiting room (atomic -1 playerCount)
           || (
             existing().status == 'waiting'
             && existing().playerCount > 0
             && incoming().playerCount == existing().playerCount - 1
             && incoming().diff(existing()).affectedKeys().hasOnly(['playerCount', 'updatedAt'])
-            && exists(/databases/$(database)/documents/rooms/$(roomCode)/players/$(request.auth.uid))
-            && !existsAfter(/databases/$(database)/documents/rooms/$(roomCode)/players/$(request.auth.uid))
+            && exists(playerPath(roomCode, request.auth.uid))
+            && !existsAfter(playerPath(roomCode, request.auth.uid))
           )
         );
 
-      // Only host can close/delete the room
       allow delete: if isSignedIn()
         && isValidRoomCode(roomCode)
         && existing().hostUid == request.auth.uid;
@@ -201,7 +259,6 @@ service cloud.firestore {
         allow get: if isSignedIn() && isValidRoomCode(roomCode) && isValidId(playerId);
         allow list: if isSignedIn() && isValidRoomCode(roomCode) && resource.data.roundNumber >= 1;
 
-        // New student joins while room is waiting and below 25 players, with atomic name lock + playerCount increment
         allow create: if isSignedIn()
           && isValidRoomCode(roomCode)
           && isValidId(playerId)
@@ -223,7 +280,6 @@ service cloud.firestore {
           && existsAfter(/databases/$(database)/documents/rooms/$(roomCode)/names/$(incoming().normalizedKey))
           && getAfter(/databases/$(database)/documents/rooms/$(roomCode)/names/$(incoming().normalizedKey)).data.uid == request.auth.uid;
 
-        // Player updates split into strict Action branches
         allow update: if isSignedIn()
           && isValidRoomCode(roomCode)
           && isValidId(playerId)
@@ -236,7 +292,6 @@ service cloud.firestore {
           && incoming().joinedAt == existing().joinedAt
           && incoming().lastSeen == request.time
           && (
-            // Action 1: Host resets player for PLAY AGAIN
             (
               getRoom(roomCode).hostUid == request.auth.uid
               && getRoomAfter(roomCode).roundNumber == existing().roundNumber + 1
@@ -251,7 +306,6 @@ service cloud.firestore {
                 'score', 'level', 'lives', 'completed', 'totalCompleted', 'status', 'roundNumber', 'lastSeen'
               ])
             )
-            // Action 2: Player presence / reconnect heartbeat (cannot alter score/lives/level/completed or revive eliminated)
             || (
               playerId == request.auth.uid
               && getRoom(roomCode).status != 'finished'
@@ -259,7 +313,6 @@ service cloud.firestore {
               && incoming().status in ['connected', 'disconnected']
               && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'lastSeen'])
             )
-            // Action 3: Player completes a challenge (in same level or leveling up on 15/15)
             || (
               playerId == request.auth.uid
               && getRoom(roomCode).status == 'playing'
@@ -289,7 +342,6 @@ service cloud.firestore {
                 )
               )
             )
-            // Action 4: Player misses a card (-1 life, or eliminated when lives reaches 0)
             || (
               playerId == request.auth.uid
               && getRoom(roomCode).status == 'playing'
@@ -336,6 +388,238 @@ service cloud.firestore {
             || isRoomHost(roomCode)
           );
       }
+
+      // 8. Top-20-Only Leaderboard Gatekeeper
+      match /leaderboardMeta/{docId} {
+        allow get: if isSignedIn() && isValidRoomCode(roomCode) && docId == 'state';
+        allow list: if false;
+
+        allow create: if isSignedIn()
+          && isValidRoomCode(roomCode)
+          && docId == 'state'
+          && isValidLeaderboardMeta(incoming())
+          && existsAfter(roomPath(roomCode))
+          && getAfter(roomPath(roomCode)).hostUid == request.auth.uid
+          && incoming().count == 0
+          && incoming().entryUids.size() == 0
+          && incoming().minEntryUid == null
+          && incoming().minScore == 0
+          && incoming().minLevel == 0
+          && incoming().minTotalCompleted == 0
+          && incoming().roundNumber == getAfter(roomPath(roomCode)).roundNumber
+          && incoming().updatedAt == request.time;
+
+        allow update: if isSignedIn()
+          && isValidRoomCode(roomCode)
+          && docId == 'state'
+          && isValidLeaderboardMeta(incoming())
+          && exists(roomPath(roomCode))
+          && incoming().updatedAt == request.time
+          && (
+            // Host resets leaderboard to empty for PLAY AGAIN
+            (
+              getRoom(roomCode).hostUid == request.auth.uid
+              && getRoomAfter(roomCode).roundNumber == existing().roundNumber + 1
+              && incoming().roundNumber == existing().roundNumber + 1
+              && incoming().count == 0
+              && incoming().entryUids.size() == 0
+              && incoming().minEntryUid == null
+              && incoming().minScore == 0
+              && incoming().minLevel == 0
+              && incoming().minTotalCompleted == 0
+            )
+            // Student updates leaderboard metadata atomically alongside their own leaderboard write
+            || (
+              getRoom(roomCode).status == 'playing'
+              && incoming().roundNumber == existing().roundNumber
+              && existsAfter(/databases/$(database)/documents/rooms/$(roomCode)/leaderboard/$(request.auth.uid))
+              && (
+                // Case A: Already in Top 20 (count stays same, UID set unchanged)
+                (
+                  request.auth.uid in existing().entryUids
+                  && incoming().count == existing().count
+                  && incoming().entryUids.hasAll(existing().entryUids)
+                  && existing().entryUids.hasAll(incoming().entryUids)
+                )
+                // Case B: Space available (< 20 entries, adding self)
+                || (
+                  !(request.auth.uid in existing().entryUids)
+                  && existing().count < 20
+                  && incoming().count == existing().count + 1
+                  && incoming().entryUids.hasAll(existing().entryUids)
+                  && request.auth.uid in incoming().entryUids
+                )
+                // Case C: Full (20 entries), replacing old #20 with self
+                || (
+                  !(request.auth.uid in existing().entryUids)
+                  && existing().count == 20
+                  && incoming().count == 20
+                  && existing().minEntryUid != null
+                  && existing().minEntryUid in existing().entryUids
+                  && !(existing().minEntryUid in incoming().entryUids)
+                  && request.auth.uid in incoming().entryUids
+                  && !existsAfter(/databases/$(database)/documents/rooms/$(roomCode)/leaderboard/$(existing().minEntryUid))
+                )
+              )
+            )
+          );
+
+        allow delete: if isSignedIn()
+          && isValidRoomCode(roomCode)
+          && docId == 'state'
+          && isRoomHost(roomCode);
+      }
+
+      // 9. Top-20-Only Leaderboard Entries (Rank 21+ never stored)
+      match /leaderboard/{entryId} {
+        allow get: if isSignedIn() && isValidRoomCode(roomCode) && isValidId(entryId);
+        allow list: if isSignedIn() && isValidRoomCode(roomCode) && resource.data.roundNumber >= 1;
+
+        allow create: if isSignedIn()
+          && isValidRoomCode(roomCode)
+          && isValidId(entryId)
+          && entryId == request.auth.uid
+          && isValidLeaderboardEntry(incoming(), entryId)
+          && exists(roomPath(roomCode))
+          && getRoom(roomCode).status == 'playing'
+          && incoming().roundNumber == getRoom(roomCode).roundNumber
+          && incoming().updatedAt == request.time
+          && existsAfter(playerPath(roomCode, entryId))
+          && incoming().score == getAfter(playerPath(roomCode, entryId)).data.score
+          && incoming().level == getAfter(playerPath(roomCode, entryId)).data.level
+          && incoming().totalCompleted == getAfter(playerPath(roomCode, entryId)).data.totalCompleted
+          && incoming().completed == getAfter(playerPath(roomCode, entryId)).data.completed
+          && incoming().lives == getAfter(playerPath(roomCode, entryId)).data.lives
+          && incoming().name == getAfter(playerPath(roomCode, entryId)).data.name
+          && exists(metaPath(roomCode))
+          && (
+            (
+              getMeta(roomCode).count < 20
+              && getMetaAfter(roomCode).count == getMeta(roomCode).count + 1
+            )
+            || (
+              getMeta(roomCode).count == 20
+              && getMetaAfter(roomCode).count == 20
+              && getMeta(roomCode).minEntryUid != null
+              && getMeta(roomCode).minEntryUid != entryId
+              && outranksThreshold(incoming(), getMeta(roomCode))
+              && exists(/databases/$(database)/documents/rooms/$(roomCode)/leaderboard/$(getMeta(roomCode).minEntryUid))
+              && !existsAfter(/databases/$(database)/documents/rooms/$(roomCode)/leaderboard/$(getMeta(roomCode).minEntryUid))
+            )
+          );
+
+        allow update: if isSignedIn()
+          && isValidRoomCode(roomCode)
+          && isValidId(entryId)
+          && entryId == request.auth.uid
+          && isValidLeaderboardEntry(incoming(), entryId)
+          && exists(roomPath(roomCode))
+          && getRoom(roomCode).status == 'playing'
+          && incoming().uid == existing().uid
+          && incoming().name == existing().name
+          && incoming().avatarColor == existing().avatarColor
+          && incoming().roundNumber == existing().roundNumber
+          && incoming().updatedAt == request.time
+          && existsAfter(playerPath(roomCode, entryId))
+          && incoming().score == getAfter(playerPath(roomCode, entryId)).data.score
+          && incoming().level == getAfter(playerPath(roomCode, entryId)).data.level
+          && incoming().totalCompleted == getAfter(playerPath(roomCode, entryId)).data.totalCompleted
+          && incoming().completed == getAfter(playerPath(roomCode, entryId)).data.completed
+          && incoming().lives == getAfter(playerPath(roomCode, entryId)).data.lives
+          && incoming().status == getAfter(playerPath(roomCode, entryId)).data.status;
+
+        allow delete: if isSignedIn()
+          && isValidRoomCode(roomCode)
+          && isValidId(entryId)
+          && (
+            isRoomHost(roomCode)
+            || (
+              exists(roomPath(roomCode))
+              && getRoom(roomCode).status == 'playing'
+              && exists(metaPath(roomCode))
+              && getMeta(roomCode).count == 20
+              && getMeta(roomCode).minEntryUid == entryId
+              && entryId != request.auth.uid
+              && !exists(/databases/$(database)/documents/rooms/$(roomCode)/leaderboard/$(request.auth.uid))
+              && existsAfter(/databases/$(database)/documents/rooms/$(roomCode)/leaderboard/$(request.auth.uid))
+            )
+          );
+      }
+    }
+
+    // 10. Dedicated Solo Leaderboard (strictly isolated from Multiplayer)
+    function isValidSoloEntry(data) {
+      return data.keys().hasAll([
+        'uid', 'name', 'avatarColor', 'score', 'level', 'totalCompleted',
+        'durationSeconds', 'mode', 'createdAt'
+      ])
+      && data.keys().hasOnly([
+        'uid', 'name', 'avatarColor', 'score', 'level', 'totalCompleted',
+        'durationSeconds', 'mode', 'createdAt'
+      ])
+      && data.uid is string && isValidId(data.uid)
+      && data.name is string && data.name.size() >= 1 && data.name.size() <= 30
+      && data.avatarColor is string && data.avatarColor.size() >= 4 && data.avatarColor.size() <= 20
+      && data.score is int && data.score >= 1 && data.score <= 1000000
+      && data.level is int && data.level >= 1 && data.level <= 999
+      && data.totalCompleted is int && data.totalCompleted >= 1 && data.totalCompleted <= 10000
+      && data.durationSeconds is int && data.durationSeconds >= 0 && data.durationSeconds <= 86400
+      && data.mode is string && data.mode == 'solo'
+      && data.createdAt is timestamp;
+    }
+
+    match /soloLeaderboard/{entryId} {
+      allow get: if isSignedIn() && isValidId(entryId);
+      allow list: if isSignedIn() && resource.data.score >= 1;
+
+      allow create: if isSignedIn()
+        && isValidId(entryId)
+        && isValidSoloEntry(incoming())
+        && incoming().uid == request.auth.uid
+        && incoming().createdAt == request.time;
+
+      allow update, delete: if false;
+    }
+
+    // 11. Dedicated Global Multiplayer Leaderboard (verified against room player state)
+    function isValidMultiplayerLeaderboardEntry(data) {
+      return data.keys().hasAll([
+        'roomCode', 'roundNumber', 'uid', 'name', 'avatarColor', 'score',
+        'level', 'totalCompleted', 'mode', 'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'roomCode', 'roundNumber', 'uid', 'name', 'avatarColor', 'score',
+        'level', 'totalCompleted', 'mode', 'updatedAt'
+      ])
+      && data.roomCode is string && isValidRoomCode(data.roomCode)
+      && data.roundNumber is int && data.roundNumber >= 1
+      && data.uid is string && isValidId(data.uid)
+      && data.name is string && data.name.size() >= 1 && data.name.size() <= 30
+      && data.avatarColor is string && data.avatarColor.size() >= 4 && data.avatarColor.size() <= 20
+      && data.score is int && data.score >= 1 && data.score <= 1000000
+      && data.level is int && data.level >= 1 && data.level <= 999
+      && data.totalCompleted is int && data.totalCompleted >= 1 && data.totalCompleted <= 10000
+      && data.mode is string && data.mode == 'multiplayer'
+      && data.updatedAt is timestamp;
+    }
+
+    match /multiplayerLeaderboard/{entryId} {
+      allow get: if isSignedIn() && isValidId(entryId);
+      allow list: if isSignedIn() && resource.data.score >= 1;
+
+      allow create, update: if isSignedIn()
+        && isValidId(entryId)
+        && isValidMultiplayerLeaderboardEntry(incoming())
+        && incoming().uid == request.auth.uid
+        && incoming().updatedAt == request.time
+        && entryId == (incoming().roomCode + '_r' + string(incoming().roundNumber) + '_' + request.auth.uid)
+        && existsAfter(playerPath(incoming().roomCode, request.auth.uid))
+        && incoming().score == getAfter(playerPath(incoming().roomCode, request.auth.uid)).data.score
+        && incoming().level == getAfter(playerPath(incoming().roomCode, request.auth.uid)).data.level
+        && incoming().totalCompleted == getAfter(playerPath(incoming().roomCode, request.auth.uid)).data.totalCompleted
+        && incoming().name == getAfter(playerPath(incoming().roomCode, request.auth.uid)).data.name;
+
+      allow delete: if false;
     }
   }
 }

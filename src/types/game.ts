@@ -41,6 +41,31 @@ export interface PlayerData {
   lastSeen: number | null;
 }
 
+export interface LeaderboardEntry {
+  uid: string;
+  name: string;
+  avatarColor: string;
+  score: number;
+  level: number;
+  completed: number;
+  totalCompleted: number;
+  lives: number;
+  status: PlayerStatus;
+  roundNumber: number;
+  updatedAt: number | null;
+}
+
+export interface LeaderboardMeta {
+  roundNumber: number;
+  count: number;
+  entryUids: string[];
+  minEntryUid: string | null;
+  minScore: number;
+  minLevel: number;
+  minTotalCompleted: number;
+  updatedAt: number | null;
+}
+
 export interface ChallengeTemplate {
   type: ChallengeType;
   title: string;
@@ -59,13 +84,56 @@ export interface ActiveChallengeCard extends ChallengeTemplate {
   widthPx: number;
 }
 
+export interface SoloLeaderboardEntry {
+  id: string;
+  uid: string;
+  name: string;
+  avatarColor: string;
+  score: number;
+  level: number;
+  totalCompleted: number;
+  durationSeconds: number;
+  mode: 'solo';
+  createdAt: number | null;
+}
+
+export interface MultiplayerLeaderboardEntry {
+  id: string;
+  roomCode: string;
+  roundNumber: number;
+  uid: string;
+  name: string;
+  avatarColor: string;
+  score: number;
+  level: number;
+  totalCompleted: number;
+  mode: 'multiplayer';
+  updatedAt: number | null;
+}
+
+export interface SoloSessionResult {
+  entryId: string | null;
+  playerName: string;
+  avatarColor: string;
+  score: number;
+  level: number;
+  totalCompleted: number;
+  durationSeconds: number;
+  savedToLeaderboard: boolean;
+  endReason: 'eliminated' | 'finished_by_player';
+}
+
 export type AppScreen =
   | 'landing'
   | 'create'
   | 'join'
   | 'waiting'
   | 'arena'
-  | 'results';
+  | 'results'
+  | 'solo-setup'
+  | 'solo-arena'
+  | 'solo-results'
+  | 'leaderboards';
 
 export type AuthReadyState =
   | 'initializing'

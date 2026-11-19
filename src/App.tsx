@@ -7,6 +7,7 @@ import {
   signInWithGoogleFallback,
 } from './services/firebaseService';
 import {
+  subscribeToLeaderboard,
   subscribeToPlayers,
   subscribeToRoom,
   tryReconnectSession,
@@ -19,8 +20,10 @@ import { soundManager } from './services/soundManager';
 import type {
   AppScreen,
   AuthReadyState,
+  LeaderboardEntry,
   PlayerData,
   RoomData,
+  SoloSessionResult,
 } from './types/game';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { FirebaseSetupBanner } from './components/FirebaseSetupBanner';
@@ -31,6 +34,10 @@ import { JoinRoomView } from './components/JoinRoomView';
 import { WaitingRoom } from './components/WaitingRoom';
 import { GameArena } from './components/GameArena';
 import { FinalResults } from './components/FinalResults';
+import { SoloSetupView } from './components/SoloSetupView';
+import { SoloArena } from './components/SoloArena';
+import { SoloResults } from './components/SoloResults';
+import { LeaderboardsView } from './components/LeaderboardsView';
 
 const SESSION_STORAGE_KEY = 'bcp_active_session';
 
@@ -80,8 +87,15 @@ function GameApp() {
 
   const [room, setRoom] = useState<RoomData | null>(null);
   const [players, setPlayers] = useState<PlayerData[]>([]);
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [serverClockOffsetMs, setServerClockOffsetMs] = useState<number>(0);
   const [isMuted, setIsMuted] = useState<boolean>(false);
+
+  const [soloPlayerName, setSoloPlayerName] = useState<string>('');
+  const [soloAvatarColor, setSoloAvatarColor] = useState<string>('#06B6D4');
+  const [soloRunKey, setSoloRunKey] = useState<number>(1);
+  const [soloResult, setSoloResult] = useState<SoloSessionResult | null>(null);
+  const [leaderboardsTab, setLeaderboardsTab] = useState<'solo' | 'multiplayer'>('solo');
 
   const currentPlayerStatusRef = useRef<PlayerData['status']>('connected');
 
@@ -99,7 +113,6 @@ function GameApp() {
       setAuthState('ready');
       setAuthError(null);
 
-      // Attempt automatic reconnect if user refreshed mid-session
       const stored = loadStoredSession();
       if (stored) {
         const ok = await tryReconnectSession(stored.roomCode, stored.role);
@@ -147,17 +160,17 @@ function GameApp() {
     }
   };
 
-  // Subscribe to active room & players in real-time
+  // Subscribe to active room, players, and Top-20 leaderboard in real-time
   useEffect(() => {
     if (!activeRoomCode || authState !== 'ready') {
       setRoom(null);
       setPlayers([]);
+      setLeaderboard([]);
       return;
     }
 
     const unsubRoom = subscribeToRoom(activeRoomCode, (nextRoom, offset) => {
       if (!nextRoom) {
-        // Room was closed by Host
         setActiveRoomCode(null);
         setActiveRole(null);
         saveStoredSession(null);
@@ -187,13 +200,20 @@ function GameApp() {
       }
     });
 
+    const unsubLeaderboard = subscribeToLeaderboard(
+      activeRoomCode,
+      (nextEntries) => {
+        setLeaderboard(nextEntries);
+      }
+    );
+
     return () => {
       unsubRoom();
       unsubPlayers();
+      unsubLeaderboard();
     };
   }, [activeRoomCode, authState, currentUid]);
 
-  // Student presence heartbeat & clean disconnect on unload
   useEffect(() => {
     if (
       !activeRoomCode ||
@@ -231,7 +251,7 @@ function GameApp() {
     setIsMuted((prev) => {
       const next = !prev;
       soundManager.setMuted(next);
-      if (!next && screen === 'arena') {
+      if (!next && (screen === 'arena' || screen === 'solo-arena')) {
         soundManager.startMusic();
       }
       return next;
@@ -252,14 +272,30 @@ function GameApp() {
     setActiveRole(null);
     setRoom(null);
     setPlayers([]);
+    setLeaderboard([]);
     setScreen('landing');
+  };
+
+  const handleStartSolo = (playerName: string, avatarColor: string) => {
+    setSoloPlayerName(playerName);
+    setSoloAvatarColor(avatarColor);
+    setSoloResult(null);
+    setSoloRunKey((k) => k + 1);
+    setScreen('solo-arena');
+  };
+
+  const handleOpenLeaderboards = (tab: 'solo' | 'multiplayer' = 'solo') => {
+    setLeaderboardsTab(tab);
+    setScreen('leaderboards');
   };
 
   const isHost = Boolean(room && currentUid && room.hostUid === currentUid);
 
   return (
-    <div className="min-h-screen bg-[#060A17]">
-      {screen === 'landing' && (
+    <div className="min-h-screen bg-[#F5F9FF] text-slate-900">
+      {(screen === 'landing' ||
+        screen === 'solo-setup' ||
+        screen === 'leaderboards') && (
         <FirebaseSetupBanner
           authState={authState}
           errorMessage={authError}
@@ -271,10 +307,61 @@ function GameApp() {
 
       {screen === 'landing' && (
         <LandingPage
+          onStartSolo={() => setScreen('solo-setup')}
           onCreateRoom={() => setScreen('create')}
           onJoinGame={() => setScreen('join')}
           onOpenHowToPlay={() => setHowToPlayOpen(true)}
+          onOpenLeaderboards={handleOpenLeaderboards}
           authState={authState}
+        />
+      )}
+
+      {screen === 'solo-setup' && (
+        <SoloSetupView
+          initialName={soloPlayerName}
+          onBack={() => setScreen('landing')}
+          onStartSolo={handleStartSolo}
+          onOpenSoloLeaderboard={() => handleOpenLeaderboards('solo')}
+        />
+      )}
+
+      {screen === 'solo-arena' && (
+        <SoloArena
+          key={soloRunKey}
+          playerName={soloPlayerName}
+          avatarColor={soloAvatarColor}
+          isMuted={isMuted}
+          onToggleMute={handleToggleMute}
+          onFinished={(result) => {
+            setSoloResult(result);
+            setScreen('solo-results');
+          }}
+        />
+      )}
+
+      {screen === 'solo-results' && soloResult && (
+        <SoloResults
+          result={soloResult}
+          onPlayAgain={() => {
+            setSoloResult(null);
+            setSoloRunKey((k) => k + 1);
+            setScreen('solo-arena');
+          }}
+          onBackHome={() => {
+            setSoloResult(null);
+            setScreen('landing');
+          }}
+          onOpenAllLeaderboards={() => handleOpenLeaderboards('multiplayer')}
+        />
+      )}
+
+      {screen === 'leaderboards' && (
+        <LeaderboardsView
+          initialTab={leaderboardsTab}
+          currentUid={currentUid}
+          onBack={() => setScreen('landing')}
+          onStartSolo={() => setScreen('solo-setup')}
+          onJoinMultiplayer={() => setScreen('join')}
         />
       )}
 
@@ -307,6 +394,7 @@ function GameApp() {
         <GameArena
           room={room}
           players={players}
+          leaderboard={leaderboard}
           isHost={isHost}
           currentUid={currentUid}
           serverClockOffsetMs={serverClockOffsetMs}
@@ -319,6 +407,7 @@ function GameApp() {
         <FinalResults
           room={room}
           players={players}
+          leaderboard={leaderboard}
           isHost={isHost}
           currentUid={currentUid}
           onBackHome={handleExitRoom}

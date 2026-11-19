@@ -152,10 +152,10 @@ export function WaitingRoom({
   ).length;
 
   return (
-    <div className="min-h-screen bg-[#060A17] text-slate-100 arena-grid-bg relative overflow-hidden">
+    <div className="min-h-screen bg-[#F5F9FF] text-slate-900 arena-grid-bg relative overflow-hidden">
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute -top-32 left-1/2 -translate-x-1/2 w-[640px] h-[360px] rounded-full bg-blue-600/15 blur-[130px]"
+        className="pointer-events-none absolute -top-28 left-1/2 -translate-x-1/2 w-[620px] h-[340px] rounded-full bg-sky-200/50 blur-[110px]"
       />
 
       {/* Synchronized Countdown Overlay */}
@@ -165,9 +165,9 @@ export function WaitingRoom({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-[#050814]/90 backdrop-blur-xl flex flex-col items-center justify-center p-6"
+            className="fixed inset-0 z-50 bg-white/90 backdrop-blur-xl flex flex-col items-center justify-center p-6"
           >
-            <p className="text-sm font-semibold tracking-[0.25em] text-cyan-300 mb-6 uppercase">
+            <p className="text-sm font-bold tracking-[0.25em] text-sky-600 mb-6 uppercase">
               Arena Dimulai Dalam
             </p>
             <motion.div
@@ -178,13 +178,13 @@ export function WaitingRoom({
               transition={{ duration: 0.25 }}
               className={`text-8xl sm:text-9xl font-black font-display tracking-tight tabular-nums ${
                 countdownLabel === 'GO!'
-                  ? 'text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-cyan-300 to-blue-400'
-                  : 'text-white'
+                  ? 'text-transparent bg-clip-text bg-gradient-to-r from-amber-500 via-sky-500 to-emerald-500'
+                  : 'text-slate-900'
               }`}
             >
               {countdownLabel}
             </motion.div>
-            <p className="text-sm text-slate-400 mt-6">
+            <p className="text-sm font-medium text-slate-600 mt-6">
               Siapkan mouse dan keyboardmu (Ctrl+C &amp; Ctrl+V)
             </p>
           </motion.div>
@@ -194,15 +194,15 @@ export function WaitingRoom({
       {/* Main Waiting Room Container */}
       <div className="relative z-10 max-w-6xl mx-auto px-6 py-8 space-y-8">
         {/* Top Header */}
-        <div className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-slate-800/80">
+        <div className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-slate-200">
           <div>
-            <div className="flex items-center gap-2 text-xs text-emerald-400 font-medium">
-              <span className="w-2 h-2 rounded-full bg-emerald-400" />
+            <div className="flex items-center gap-2 text-xs text-emerald-700 font-semibold">
+              <span className="w-2 h-2 rounded-full bg-emerald-500" />
               <span>Firebase Realtime Terhubung</span>
-              <span aria-hidden="true" className="text-slate-600">·</span>
-              <span className="text-slate-300">Host: {room.hostName}</span>
+              <span aria-hidden="true" className="text-slate-300">·</span>
+              <span className="text-slate-600">Host: {room.hostName}</span>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-bold font-display text-white mt-1">
+            <h1 className="text-2xl sm:text-3xl font-extrabold font-display text-slate-900 mt-1">
               WAITING FOR PLAYERS
             </h1>
           </div>
@@ -214,7 +214,7 @@ export function WaitingRoom({
                   type="button"
                   onClick={handleCloseRoom}
                   disabled={actionBusy}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-rose-950/70 border border-slate-700 hover:border-rose-500/50 text-slate-200 hover:text-rose-200 text-sm font-semibold transition-colors whitespace-nowrap disabled:opacity-50"
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white hover:bg-rose-50 border border-slate-200 hover:border-rose-300 text-slate-700 hover:text-rose-700 text-sm font-semibold transition-colors whitespace-nowrap disabled:opacity-50 shadow-xs"
                 >
                   <XCircle className="w-4 h-4" />
                   CLOSE ROOM
@@ -223,7 +223,7 @@ export function WaitingRoom({
                   type="button"
                   onClick={handleStartGame}
                   disabled={players.length < 1 || actionBusy}
-                  className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-cyan-500 to-emerald-500 hover:brightness-110 text-white text-sm font-bold shadow-lg shadow-cyan-950/50 transition-all whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-sky-600 hover:brightness-105 text-white text-sm font-bold shadow-md shadow-emerald-500/20 transition-all whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <Play className="w-4 h-4 fill-current" />
                   START GAME
@@ -234,7 +234,7 @@ export function WaitingRoom({
                 type="button"
                 onClick={handleLeaveStudent}
                 disabled={actionBusy}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 text-sm font-medium transition-colors whitespace-nowrap"
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-sm font-semibold transition-colors whitespace-nowrap shadow-xs"
               >
                 <DoorOpen className="w-4 h-4" />
                 Keluar Room
@@ -245,15 +245,15 @@ export function WaitingRoom({
 
         {/* Projector Room Code Banner + Player Counter */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
-          <div className="lg:col-span-8 rounded-2xl bg-slate-900/75 backdrop-blur-xl border border-cyan-500/30 p-6 sm:p-8 flex flex-col sm:flex-row items-center justify-between gap-6 shadow-xl">
+          <div className="lg:col-span-8 rounded-2xl bg-white border border-sky-200 p-6 sm:p-8 flex flex-col sm:flex-row items-center justify-between gap-6 shadow-md shadow-sky-900/5">
             <div className="text-center sm:text-left">
-              <p className="text-xs font-semibold tracking-widest text-cyan-300 uppercase">
+              <p className="text-xs font-bold tracking-widest text-sky-600 uppercase">
                 KODE ROOM KELAS
               </p>
-              <div className="text-5xl sm:text-6xl font-black font-mono tracking-[0.22em] text-white mt-2 select-all">
+              <div className="text-5xl sm:text-6xl font-black font-mono tracking-[0.22em] text-slate-900 mt-2 select-all">
                 {room.roomCode}
               </div>
-              <p className="text-xs text-slate-400 mt-2">
+              <p className="text-xs text-slate-500 mt-2">
                 Bagikan kode ini ke siswa untuk bergabung ke arena
               </p>
             </div>
@@ -261,36 +261,36 @@ export function WaitingRoom({
             <button
               type="button"
               onClick={handleCopyCode}
-              className="inline-flex items-center gap-2.5 px-5 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600/70 text-white text-sm font-semibold transition-all whitespace-nowrap shrink-0"
+              className="inline-flex items-center gap-2.5 px-5 py-3 rounded-xl bg-sky-50 hover:bg-sky-100 border border-sky-200 text-sky-800 text-sm font-bold transition-all whitespace-nowrap shrink-0"
             >
               {copied ? (
                 <>
-                  <Check className="w-4 h-4 text-emerald-400" />
-                  <span className="text-emerald-300">Kode Disalin!</span>
+                  <Check className="w-4 h-4 text-emerald-600" />
+                  <span className="text-emerald-700">Kode Disalin!</span>
                 </>
               ) : (
                 <>
-                  <Copy className="w-4 h-4 text-cyan-400" />
+                  <Copy className="w-4 h-4 text-sky-600" />
                   <span>COPY ROOM CODE</span>
                 </>
               )}
             </button>
           </div>
 
-          <div className="lg:col-span-4 rounded-2xl bg-slate-900/75 backdrop-blur-xl border border-slate-700/60 p-6 sm:p-8 flex flex-col justify-center">
-            <div className="flex items-center gap-2 text-xs font-semibold text-slate-400 uppercase tracking-wider">
-              <Users className="w-4 h-4 text-amber-400" />
+          <div className="lg:col-span-4 rounded-2xl bg-white border border-slate-200 p-6 sm:p-8 flex flex-col justify-center shadow-md shadow-slate-900/5">
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider">
+              <Users className="w-4 h-4 text-amber-500" />
               <span>PLAYER CONNECTED</span>
             </div>
             <div className="mt-2 flex items-baseline gap-2">
-              <span className="text-5xl font-black font-mono tabular-nums text-white">
+              <span className="text-5xl font-black font-mono tabular-nums text-slate-900">
                 {players.length}
               </span>
-              <span className="text-2xl font-bold font-mono tabular-nums text-slate-500">
+              <span className="text-2xl font-bold font-mono tabular-nums text-slate-400">
                 / {room.maxPlayers}
               </span>
             </div>
-            <p className="text-xs text-slate-400 mt-2 tabular-nums">
+            <p className="text-xs text-slate-500 mt-2 tabular-nums">
               {connectedCount} perangkat aktif ·{' '}
               {isHost
                 ? players.length === 0
@@ -302,25 +302,25 @@ export function WaitingRoom({
         </div>
 
         {/* Realtime Student Grid */}
-        <div className="rounded-2xl bg-slate-900/65 backdrop-blur-xl border border-slate-800 p-6">
+        <div className="rounded-2xl bg-white border border-slate-200 p-6 shadow-md shadow-slate-900/5">
           <div className="flex items-center justify-between mb-5">
-            <h2 className="text-base font-bold font-display text-white">
+            <h2 className="text-base font-bold font-display text-slate-900">
               Daftar Peserta Room
             </h2>
-            <span className="text-xs text-slate-400">
+            <span className="text-xs text-slate-500">
               Update otomatis secara real-time
             </span>
           </div>
 
           {players.length === 0 ? (
-            <div className="py-16 text-center space-y-3 border border-dashed border-slate-800 rounded-xl">
-              <Users className="w-10 h-10 text-slate-600 mx-auto" />
-              <p className="text-slate-300 font-medium text-sm">
+            <div className="py-16 text-center space-y-3 border border-dashed border-slate-200 rounded-xl bg-slate-50/60">
+              <Users className="w-10 h-10 text-slate-400 mx-auto" />
+              <p className="text-slate-700 font-semibold text-sm">
                 Belum ada siswa yang masuk ke room ini.
               </p>
               <p className="text-slate-500 text-xs">
                 Siswa dapat membuka menu JOIN GAME dan memasukkan kode{' '}
-                <span className="font-mono text-cyan-300">{room.roomCode}</span>.
+                <span className="font-mono font-bold text-sky-700">{room.roomCode}</span>.
               </p>
             </div>
           ) : (
@@ -339,31 +339,31 @@ export function WaitingRoom({
                       transition={{ duration: 0.2 }}
                       className={`rounded-xl p-3.5 border flex items-center gap-3 transition-colors ${
                         isMe
-                          ? 'bg-cyan-950/40 border-cyan-500/50'
-                          : 'bg-slate-950/70 border-slate-800'
+                          ? 'bg-sky-50 border-sky-300 shadow-xs'
+                          : 'bg-slate-50 border-slate-200'
                       }`}
                     >
                       <div
-                        className="w-10 h-10 rounded-xl flex items-center justify-center font-bold font-display text-sm text-slate-950 shrink-0 shadow-inner"
+                        className="w-10 h-10 rounded-xl flex items-center justify-center font-bold font-display text-sm text-white shrink-0 shadow-xs"
                         style={{ backgroundColor: player.avatarColor }}
                       >
                         {getPlayerInitials(player.name)}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-semibold text-white truncate">
+                        <p className="text-sm font-bold text-slate-900 truncate">
                           {player.name}
                           {isMe ? ' (Kamu)' : ''}
                         </p>
-                        <div className="flex items-center gap-1.5 text-[11px] mt-0.5">
+                        <div className="flex items-center gap-1.5 text-[11px] font-medium mt-0.5">
                           {effStatus === 'connected' ? (
                             <>
-                              <Wifi className="w-3 h-3 text-emerald-400 shrink-0" />
-                              <span className="text-emerald-300">Terhubung</span>
+                              <Wifi className="w-3 h-3 text-emerald-600 shrink-0" />
+                              <span className="text-emerald-700">Terhubung</span>
                             </>
                           ) : (
                             <>
-                              <WifiOff className="w-3 h-3 text-amber-400 shrink-0" />
-                              <span className="text-amber-300">Terputus</span>
+                              <WifiOff className="w-3 h-3 text-amber-500 shrink-0" />
+                              <span className="text-amber-700">Terputus</span>
                             </>
                           )}
                         </div>

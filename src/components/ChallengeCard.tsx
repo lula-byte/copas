@@ -23,38 +23,44 @@ const CARD_STYLES: Record<
   {
     border: string;
     glow: string;
+    headerBg: string;
     badgeText: string;
     icon: React.ComponentType<{ className?: string }>;
   }
 > = {
   BLOK_KATA: {
-    border: 'border-cyan-400/50',
-    glow: 'shadow-cyan-950/60',
-    badgeText: 'text-cyan-300',
+    border: 'border-sky-300',
+    glow: 'shadow-sky-900/10',
+    headerBg: 'bg-sky-50 border-b border-sky-100',
+    badgeText: 'text-sky-700',
     icon: MousePointerClick,
   },
   BLOK_KALIMAT: {
-    border: 'border-blue-400/55',
-    glow: 'shadow-blue-950/60',
-    badgeText: 'text-blue-300',
+    border: 'border-blue-300',
+    glow: 'shadow-blue-900/10',
+    headerBg: 'bg-blue-50 border-b border-blue-100',
+    badgeText: 'text-blue-700',
     icon: Type,
   },
   COPY: {
-    border: 'border-violet-400/55',
-    glow: 'shadow-violet-950/60',
-    badgeText: 'text-violet-300',
+    border: 'border-violet-300',
+    glow: 'shadow-violet-900/10',
+    headerBg: 'bg-violet-50 border-b border-violet-100',
+    badgeText: 'text-violet-700',
     icon: Copy,
   },
   BLOK_PARAGRAF: {
-    border: 'border-emerald-400/55',
-    glow: 'shadow-emerald-950/60',
-    badgeText: 'text-emerald-300',
+    border: 'border-emerald-300',
+    glow: 'shadow-emerald-900/10',
+    headerBg: 'bg-emerald-50 border-b border-emerald-100',
+    badgeText: 'text-emerald-700',
     icon: FileText,
   },
   COPY_PASTE: {
-    border: 'border-amber-400/60',
-    glow: 'shadow-amber-950/50',
-    badgeText: 'text-amber-300',
+    border: 'border-amber-300',
+    glow: 'shadow-amber-900/10',
+    headerBg: 'bg-amber-50 border-b border-amber-100',
+    badgeText: 'text-amber-700',
     icon: ClipboardCheck,
   },
 };
@@ -273,88 +279,90 @@ export function ChallengeCard({
       }`}
     >
       <div
-        className={`rounded-2xl bg-[#0D152E]/95 backdrop-blur-xl border ${style.border} p-4 shadow-2xl ${style.glow} ${
+        className={`rounded-2xl bg-white border-2 ${style.border} overflow-hidden shadow-xl ${style.glow} ${
           shaking ? 'animate-card-shake border-rose-500' : ''
-        } ${solved ? 'border-emerald-400 bg-emerald-950/60' : ''}`}
+        } ${solved ? 'border-emerald-400 bg-emerald-50' : ''}`}
       >
         {/* Card Header */}
-        <div className="flex items-center justify-between gap-2 mb-2">
-          <div className={`flex items-center gap-1.5 text-xs font-bold ${style.badgeText}`}>
+        <div className={`flex items-center justify-between gap-2 px-4 py-2.5 ${style.headerBg}`}>
+          <div className={`flex items-center gap-1.5 text-xs font-extrabold ${style.badgeText}`}>
             <Icon className="w-4 h-4 shrink-0" />
             <span>{card.title}</span>
           </div>
           {isPaused && !solved && (
-            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-cyan-200">
-              <PauseCircle className="w-3.5 h-3.5 text-cyan-400" />
+            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-sky-700">
+              <PauseCircle className="w-3.5 h-3.5 text-sky-600" />
               Berhenti sejenak
             </span>
           )}
           {solved && (
-            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-300">
+            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700">
               <CheckCircle2 className="w-3.5 h-3.5" />
               Benar!
             </span>
           )}
         </div>
 
-        {/* Instruction */}
-        <p className="text-xs text-slate-400 mb-2.5 leading-snug">
-          {card.instruction}
-        </p>
-
-        {/* Target Cue (for word / sentence / copy / copy-paste) */}
-        {card.type !== 'BLOK_PARAGRAF' && (
-          <div className="mb-2.5 px-3 py-1.5 rounded-lg bg-slate-950/80 border border-slate-800 text-xs">
-            <span className="text-slate-400">Target: </span>
-            <span className="font-semibold text-amber-300 select-none">
-              {card.target}
-            </span>
-          </div>
-        )}
-
-        {/* Selectable Text Area */}
-        <div
-          ref={textContainerRef}
-          tabIndex={0}
-          onDoubleClick={handleDoubleClick}
-          onMouseUp={handleMouseUp}
-          onCopy={handleCopyEvent}
-          onKeyDown={handleKeyDownOnText}
-          className="challenge-selectable rounded-xl bg-slate-950/90 border border-slate-700/70 px-3.5 py-3 text-sm sm:text-[15px] text-white leading-relaxed select-text cursor-text focus:outline-none focus:ring-2 focus:ring-cyan-500/60"
-        >
-          {card.text}
-        </div>
-
-        {/* Paste Box for COPY + PASTE */}
-        {card.type === 'COPY_PASTE' && (
-          <div className="mt-3">
-            <input
-              type="text"
-              value={pasteValue}
-              onChange={() => {}}
-              onPaste={handlePaste}
-              onKeyDown={handlePasteInputKeyDown}
-              placeholder="Klik di sini, lalu Paste (Ctrl+V)..."
-              aria-label="Kotak jawaban untuk menempel teks yang disalin"
-              className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-amber-400/50 text-sm text-amber-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-400/70"
-            />
-          </div>
-        )}
-
-        {/* Brief Feedback */}
-        {feedback && (
-          <p
-            className={`mt-2 text-xs font-medium ${
-              solved
-                ? 'text-emerald-300'
-                : feedback.startsWith('Tersalin!')
-                  ? 'text-cyan-300'
-                  : 'text-rose-300'
-            }`}
-          >
-            {feedback}
+        <div className="p-4">
+          {/* Instruction */}
+          <p className="text-xs text-slate-600 mb-2.5 leading-snug font-medium">
+            {card.instruction}
           </p>
-        )}
+
+          {/* Target Cue (for word / sentence / copy / copy-paste) */}
+          {card.type !== 'BLOK_PARAGRAF' && (
+            <div className="mb-2.5 px-3 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-xs">
+              <span className="text-amber-800/80 font-medium">Target: </span>
+              <span className="font-bold text-amber-800 select-none">
+                {card.target}
+              </span>
+            </div>
+          )}
+
+          {/* Selectable Text Area */}
+          <div
+            ref={textContainerRef}
+            tabIndex={0}
+            onDoubleClick={handleDoubleClick}
+            onMouseUp={handleMouseUp}
+            onCopy={handleCopyEvent}
+            onKeyDown={handleKeyDownOnText}
+            className="challenge-selectable rounded-xl bg-slate-50 border border-slate-200 px-3.5 py-3 text-sm sm:text-[15px] text-slate-900 font-medium leading-relaxed select-text cursor-text focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+          >
+            {card.text}
+          </div>
+
+          {/* Paste Box for COPY + PASTE */}
+          {card.type === 'COPY_PASTE' && (
+            <div className="mt-3">
+              <input
+                type="text"
+                value={pasteValue}
+                onChange={() => {}}
+                onPaste={handlePaste}
+                onKeyDown={handlePasteInputKeyDown}
+                placeholder="Klik di sini, lalu Paste (Ctrl+V)..."
+                aria-label="Kotak jawaban untuk menempel teks yang disalin"
+                className="w-full px-3 py-2 rounded-xl bg-white border-2 border-amber-300 text-sm font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-400/50"
+              />
+            </div>
+          )}
+
+          {/* Brief Feedback */}
+          {feedback && (
+            <p
+              className={`mt-2 text-xs font-semibold ${
+                solved
+                  ? 'text-emerald-700'
+                  : feedback.startsWith('Tersalin!')
+                    ? 'text-sky-700'
+                    : 'text-rose-600'
+              }`}
+            >
+              {feedback}
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );

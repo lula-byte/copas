@@ -2,17 +2,26 @@ import {
   collection,
   doc,
   getDoc,
+  getDocs,
+  limit,
   onSnapshot,
+  orderBy,
+  query,
   runTransaction,
   serverTimestamp,
-  setDoc,
   Timestamp,
   updateDoc,
   writeBatch,
   type Unsubscribe,
 } from 'firebase/firestore';
-import type { PlayerData, RoomData, RoomStatus } from '../types/game';
+import type {
+  LeaderboardEntry,
+  PlayerData,
+  RoomData,
+  RoomStatus,
+} from '../types/game';
 import { auth, db, handleFirestoreError, OperationType } from './firebaseService';
+import { sortLeaderboardEntries } from './scoreManager';
 
 const ROOM_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
@@ -94,6 +103,22 @@ function mapPlayerDoc(data: Record<string, unknown>): PlayerData {
   };
 }
 
+function mapLeaderboardDoc(data: Record<string, unknown>): LeaderboardEntry {
+  return {
+    uid: String(data.uid || ''),
+    name: String(data.name || ''),
+    avatarColor: String(data.avatarColor || '#3B82F6'),
+    score: Number(data.score || 0),
+    level: Number(data.level || 1),
+    completed: Number(data.completed || 0),
+    totalCompleted: Number(data.totalCompleted || 0),
+    lives: Number(data.lives ?? 5),
+    status: (data.status as LeaderboardEntry['status']) || 'connected',
+    roundNumber: Number(data.roundNumber || 1),
+    updatedAt: toMillis(data.updatedAt),
+  };
+}
+
 export async function createRoom(rawHostName: string): Promise<string> {
   const user = auth.currentUser;
   if (!user) {
@@ -109,6 +134,7 @@ export async function createRoom(rawHostName: string): Promise<string> {
     const roomCode = generateRoomCode();
     const roomPath = `rooms/${roomCode}`;
     const roomRef = doc(db, 'rooms', roomCode);
+    const metaRef = doc(db, 'rooms', roomCode, 'leaderboardMeta', 'state');
 
     try {
       const existing = await getDoc(roomRef);
@@ -117,7 +143,9 @@ export async function createRoom(rawHostName: string): Promise<string> {
       }
 
       const challengeSeed = Math.floor(100000 + Math.random() * 899999);
-      await setDoc(roomRef, {
+      const batch = writeBatch(db);
+
+      batch.set(roomRef, {
         roomCode,
         hostUid: user.uid,
         hostName,
@@ -133,6 +161,19 @@ export async function createRoom(rawHostName: string): Promise<string> {
         playerCount: 0,
       });
 
+      // Initialize empty Top-20 leaderboard gatekeeper for this room
+      batch.set(metaRef, {
+        roundNumber: 1,
+        count: 0,
+        entryUids: [],
+        minEntryUid: null,
+        minScore: 0,
+        minLevel: 0,
+        minTotalCompleted: 0,
+        updatedAt: serverTimestamp(),
+      });
+
+      await batch.commit();
       return roomCode;
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, roomPath);
@@ -318,7 +359,11 @@ export async function leaveWaitingRoom(roomCode: string): Promise<void> {
       });
     });
   } catch (error) {
-    handleFirestoreError(error, OperationType.DELETE, `rooms/${roomCode}/players/${user.uid}`);
+    handleFirestoreError(
+      error,
+      OperationType.DELETE,
+      `rooms/${roomCode}/players/${user.uid}`
+    );
   }
 }
 
@@ -368,34 +413,53 @@ export async function playAgainRoom(
 ): Promise<void> {
   const nextRound = currentRound + 1;
   const newSeed = Math.floor(100000 + Math.random() * 899999);
-  const batch = writeBatch(db);
-
-  const roomRef = doc(db, 'rooms', roomCode);
-  batch.update(roomRef, {
-    status: 'waiting',
-    roundNumber: nextRound,
-    challengeSeed: newSeed,
-    countdownStartedAt: null,
-    startTime: null,
-    endTime: null,
-    updatedAt: serverTimestamp(),
-  });
-
-  players.forEach((p) => {
-    const pRef = doc(db, 'rooms', roomCode, 'players', p.uid);
-    batch.update(pRef, {
-      score: 0,
-      level: 1,
-      lives: 5,
-      completed: 0,
-      totalCompleted: 0,
-      status: 'connected',
-      roundNumber: nextRound,
-      lastSeen: serverTimestamp(),
-    });
-  });
 
   try {
+    const lbSnap = await getDocs(collection(db, 'rooms', roomCode, 'leaderboard'));
+    const batch = writeBatch(db);
+
+    const roomRef = doc(db, 'rooms', roomCode);
+    batch.update(roomRef, {
+      status: 'waiting',
+      roundNumber: nextRound,
+      challengeSeed: newSeed,
+      countdownStartedAt: null,
+      startTime: null,
+      endTime: null,
+      updatedAt: serverTimestamp(),
+    });
+
+    players.forEach((p) => {
+      const pRef = doc(db, 'rooms', roomCode, 'players', p.uid);
+      batch.update(pRef, {
+        score: 0,
+        level: 1,
+        lives: 5,
+        completed: 0,
+        totalCompleted: 0,
+        status: 'connected',
+        roundNumber: nextRound,
+        lastSeen: serverTimestamp(),
+      });
+    });
+
+    // Clear all Top-20 leaderboard documents so the new session starts completely empty
+    lbSnap.forEach((d) => {
+      batch.delete(d.ref);
+    });
+
+    const metaRef = doc(db, 'rooms', roomCode, 'leaderboardMeta', 'state');
+    batch.update(metaRef, {
+      roundNumber: nextRound,
+      count: 0,
+      entryUids: [],
+      minEntryUid: null,
+      minScore: 0,
+      minLevel: 0,
+      minTotalCompleted: 0,
+      updatedAt: serverTimestamp(),
+    });
+
     await batch.commit();
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `rooms/${roomCode}`);
@@ -406,16 +470,23 @@ export async function closeRoom(
   roomCode: string,
   players: PlayerData[]
 ): Promise<void> {
-  const batch = writeBatch(db);
-  players.forEach((p) => {
-    batch.delete(doc(db, 'rooms', roomCode, 'players', p.uid));
-    if (p.normalizedKey) {
-      batch.delete(doc(db, 'rooms', roomCode, 'names', p.normalizedKey));
-    }
-  });
-  batch.delete(doc(db, 'rooms', roomCode));
-
   try {
+    const lbSnap = await getDocs(collection(db, 'rooms', roomCode, 'leaderboard'));
+    const batch = writeBatch(db);
+
+    players.forEach((p) => {
+      batch.delete(doc(db, 'rooms', roomCode, 'players', p.uid));
+      if (p.normalizedKey) {
+        batch.delete(doc(db, 'rooms', roomCode, 'names', p.normalizedKey));
+      }
+    });
+
+    lbSnap.forEach((d) => {
+      batch.delete(d.ref);
+    });
+    batch.delete(doc(db, 'rooms', roomCode, 'leaderboardMeta', 'state'));
+    batch.delete(doc(db, 'rooms', roomCode));
+
     await batch.commit();
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, `rooms/${roomCode}`);
@@ -463,6 +534,31 @@ export function subscribeToPlayers(
     },
     (error) => {
       handleFirestoreError(error, OperationType.LIST, playersPath);
+    }
+  );
+}
+
+export function subscribeToLeaderboard(
+  roomCode: string,
+  onLeaderboardUpdate: (entries: LeaderboardEntry[]) => void
+): Unsubscribe {
+  const lbPath = `rooms/${roomCode}/leaderboard`;
+  const lbQuery = query(
+    collection(db, 'rooms', roomCode, 'leaderboard'),
+    orderBy('score', 'desc'),
+    limit(20)
+  );
+  return onSnapshot(
+    lbQuery,
+    (snapshot) => {
+      const entries: LeaderboardEntry[] = [];
+      snapshot.forEach((d) => {
+        entries.push(mapLeaderboardDoc(d.data()));
+      });
+      onLeaderboardUpdate(sortLeaderboardEntries(entries));
+    },
+    (error) => {
+      handleFirestoreError(error, OperationType.LIST, lbPath);
     }
   );
 }

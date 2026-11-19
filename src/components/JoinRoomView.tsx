@@ -44,32 +44,32 @@ export function JoinRoomView({ onBack, onJoined }: JoinRoomViewProps) {
   };
 
   return (
-    <div className="min-h-screen bg-[#060A17] text-slate-100 arena-grid-bg flex flex-col items-center justify-center p-6 relative overflow-hidden">
+    <div className="min-h-screen bg-[#F5F9FF] text-slate-900 arena-grid-bg flex flex-col items-center justify-center p-6 relative overflow-hidden">
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute top-1/3 right-1/4 w-[420px] h-[420px] rounded-full bg-cyan-500/15 blur-[130px]"
+        className="pointer-events-none absolute top-1/3 right-1/4 w-[420px] h-[420px] rounded-full bg-sky-200/50 blur-[110px]"
       />
 
       <div className="relative z-10 w-full max-w-lg">
         <button
           type="button"
           onClick={onBack}
-          className="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors mb-6"
+          className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors mb-6"
         >
           <ArrowLeft className="w-4 h-4" />
           Kembali ke Beranda
         </button>
 
-        <div className="rounded-2xl bg-slate-900/80 backdrop-blur-xl border border-slate-700/60 p-8 shadow-2xl space-y-6">
+        <div className="rounded-2xl bg-white border border-sky-200 p-8 shadow-xl shadow-sky-900/5 space-y-6">
           <div className="space-y-2">
-            <div className="flex items-center gap-2 text-xs font-semibold text-cyan-300">
-              <Users className="w-4 h-4" />
+            <div className="flex items-center gap-2 text-xs font-bold text-sky-700">
+              <Users className="w-4 h-4 text-sky-600" />
               <span>MASUK ARENA SISWA</span>
             </div>
-            <h1 className="text-3xl font-bold font-display text-white">
+            <h1 className="text-3xl font-bold font-display text-slate-900">
               Gabung ke Room
             </h1>
-            <p className="text-sm text-slate-300 leading-relaxed">
+            <p className="text-sm text-slate-600 leading-relaxed">
               Masukkan 6 karakter Kode Room yang tampil di layar guru dan ketik namamu tanpa perlu login email.
             </p>
           </div>
@@ -78,7 +78,7 @@ export function JoinRoomView({ onBack, onJoined }: JoinRoomViewProps) {
             <div>
               <label
                 htmlFor="room-code-input"
-                className="block text-xs font-semibold text-slate-300 mb-2"
+                className="block text-xs font-bold text-slate-700 mb-2"
               >
                 ROOM CODE (6 Karakter)
               </label>
@@ -94,14 +94,14 @@ export function JoinRoomView({ onBack, onJoined }: JoinRoomViewProps) {
                 }
                 placeholder="MISAL: A7K9P2"
                 autoFocus
-                className="w-full px-4 py-3.5 rounded-xl bg-slate-950/90 border border-slate-700 text-cyan-300 placeholder-slate-600 font-mono text-xl font-bold tracking-[0.28em] text-center uppercase focus:outline-none focus:ring-2 focus:ring-cyan-500/70 focus:border-cyan-400 transition-all"
+                className="w-full px-4 py-3.5 rounded-xl bg-sky-50/70 border border-sky-200 text-sky-700 placeholder-slate-400 font-mono text-xl font-bold tracking-[0.28em] text-center uppercase focus:outline-none focus:ring-2 focus:ring-sky-500/40 focus:border-sky-500 transition-all"
               />
             </div>
 
             <div>
               <label
                 htmlFor="student-name-input"
-                className="block text-xs font-semibold text-slate-300 mb-2"
+                className="block text-xs font-bold text-slate-700 mb-2"
               >
                 NAMA SISWA
               </label>
@@ -112,14 +112,14 @@ export function JoinRoomView({ onBack, onJoined }: JoinRoomViewProps) {
                 value={studentName}
                 onChange={(e) => setStudentName(e.target.value)}
                 placeholder="Contoh: Nadia Putri"
-                className="w-full px-4 py-3.5 rounded-xl bg-slate-950/90 border border-slate-700 text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/70 focus:border-cyan-400 transition-all"
+                className="w-full px-4 py-3.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500/40 focus:border-sky-500 transition-all"
               />
             </div>
 
             {error && (
               <div
                 role="alert"
-                className="rounded-xl bg-rose-950/70 border border-rose-500/45 px-4 py-3 text-sm text-rose-200 leading-relaxed"
+                className="rounded-xl bg-rose-50 border border-rose-200 px-4 py-3 text-sm font-medium text-rose-700 leading-relaxed"
               >
                 {error}
               </div>
@@ -128,7 +128,7 @@ export function JoinRoomView({ onBack, onJoined }: JoinRoomViewProps) {
             <button
               type="submit"
               disabled={loading}
-              className="w-full inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-500 hover:brightness-110 text-white font-bold text-sm shadow-lg shadow-cyan-950/50 transition-all disabled:opacity-60"
+              className="w-full inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 hover:brightness-105 text-white font-bold text-sm shadow-md shadow-sky-500/20 transition-all disabled:opacity-60"
             >
               <LogIn className="w-4 h-4" />
               {loading ? 'Menghubungkan ke Room...' : 'JOIN GAME'}
