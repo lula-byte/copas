@@ -399,14 +399,14 @@ service cloud.firestore {
           && docId == 'state'
           && isValidLeaderboardMeta(incoming())
           && existsAfter(roomPath(roomCode))
-          && getAfter(roomPath(roomCode)).hostUid == request.auth.uid
+          && getRoomAfter(roomCode).hostUid == request.auth.uid
           && incoming().count == 0
           && incoming().entryUids.size() == 0
           && incoming().minEntryUid == null
           && incoming().minScore == 0
           && incoming().minLevel == 0
           && incoming().minTotalCompleted == 0
-          && incoming().roundNumber == getAfter(roomPath(roomCode)).roundNumber
+          && incoming().roundNumber == getRoomAfter(roomCode).roundNumber
           && incoming().updatedAt == request.time;
 
         allow update: if isSignedIn()
@@ -473,7 +473,7 @@ service cloud.firestore {
       // 9. Top-20-Only Leaderboard Entries (Rank 21+ never stored)
       match /leaderboard/{entryId} {
         allow get: if isSignedIn() && isValidRoomCode(roomCode) && isValidId(entryId);
-        allow list: if isSignedIn() && isValidRoomCode(roomCode) && resource.data.roundNumber >= 1;
+        allow list: if isSignedIn() && isValidRoomCode(roomCode) && resource.data.score >= 1;
 
         allow create: if isSignedIn()
           && isValidRoomCode(roomCode)

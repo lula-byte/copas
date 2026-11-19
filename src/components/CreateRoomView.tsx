@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ArrowLeft, MonitorPlay, ShieldCheck, Sparkles } from 'lucide-react';
+import { formatFirebaseUserError } from '../services/firebaseService';
 import { createRoom, RoomActionError } from '../services/roomManager';
 
 interface CreateRoomViewProps {
@@ -29,7 +30,12 @@ export function CreateRoomView({ onBack, onRoomCreated }: CreateRoomViewProps) {
       if (err instanceof RoomActionError) {
         setError(err.message);
       } else {
-        setError('Gagal membuat room. Periksa koneksi Firebase Anda.');
+        setError(
+          formatFirebaseUserError(
+            err,
+            'Gagal membuat room. Periksa koneksi Firebase Anda.'
+          )
+        );
       }
     } finally {
       setLoading(false);

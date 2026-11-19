@@ -11,6 +11,7 @@ import {
   serverTimestamp,
   Timestamp,
   updateDoc,
+  where,
   writeBatch,
   type Unsubscribe,
 } from 'firebase/firestore';
@@ -20,7 +21,14 @@ import type {
   RoomData,
   RoomStatus,
 } from '../types/game';
-import { auth, db, handleFirestoreError, OperationType } from './firebaseService';
+import {
+  auth,
+  db,
+  ensureAnonymousSession,
+  handleFirestoreError,
+  isFirebaseConfigured,
+  OperationType,
+} from './firebaseService';
 import { sortLeaderboardEntries } from './scoreManager';
 
 const ROOM_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -119,11 +127,27 @@ function mapLeaderboardDoc(data: Record<string, unknown>): LeaderboardEntry {
   };
 }
 
-export async function createRoom(rawHostName: string): Promise<string> {
-  const user = auth.currentUser;
-  if (!user) {
-    throw new RoomActionError('Sesi Firebase belum siap. Coba lagi sebentar.');
+async function requireSignedInUid(): Promise<string> {
+  if (!isFirebaseConfigured || !auth || !db) {
+    throw new RoomActionError(
+      'Konfigurasi Firebase belum lengkap pada aplikasi ini.'
+    );
   }
+  if (auth.currentUser) {
+    return auth.currentUser.uid;
+  }
+  const session = await ensureAnonymousSession();
+  if (session.user) {
+    return session.user.uid;
+  }
+  throw new RoomActionError(
+    session.errorMessage ||
+      'Sesi autentikasi Firebase belum aktif. Muat ulang halaman dan coba lagi.'
+  );
+}
+
+export async function createRoom(rawHostName: string): Promise<string> {
+  const hostUid = await requireSignedInUid();
 
   const hostName = rawHostName.trim().slice(0, 40);
   if (!hostName) {
@@ -136,18 +160,25 @@ export async function createRoom(rawHostName: string): Promise<string> {
     const roomRef = doc(db, 'rooms', roomCode);
     const metaRef = doc(db, 'rooms', roomCode, 'leaderboardMeta', 'state');
 
+    let existingExists = false;
     try {
       const existing = await getDoc(roomRef);
-      if (existing.exists()) {
-        continue;
-      }
+      existingExists = existing.exists();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.GET, roomPath);
+    }
 
+    if (existingExists) {
+      continue;
+    }
+
+    try {
       const challengeSeed = Math.floor(100000 + Math.random() * 899999);
       const batch = writeBatch(db);
 
       batch.set(roomRef, {
         roomCode,
-        hostUid: user.uid,
+        hostUid,
         hostName,
         status: 'waiting',
         createdAt: serverTimestamp(),
@@ -176,6 +207,13 @@ export async function createRoom(rawHostName: string): Promise<string> {
       await batch.commit();
       return roomCode;
     } catch (error) {
+      const code =
+        error && typeof error === 'object' && 'code' in error
+          ? String((error as { code?: unknown }).code || '')
+          : '';
+      if (code === 'already-exists') {
+        continue;
+      }
       handleFirestoreError(error, OperationType.CREATE, roomPath);
     }
   }
@@ -187,10 +225,8 @@ export async function joinRoom(
   rawRoomCode: string,
   rawPlayerName: string
 ): Promise<{ roomCode: string; reconnected: boolean }> {
-  const user = auth.currentUser;
-  if (!user) {
-    throw new RoomActionError('Sesi Firebase belum siap. Coba lagi sebentar.');
-  }
+  const userUid = await requireSignedInUid();
+  const user = { uid: userUid };
 
   const roomCode = rawRoomCode.trim().toUpperCase();
   if (!/^[A-Z0-9]{6}$/.test(roomCode)) {
@@ -415,7 +451,12 @@ export async function playAgainRoom(
   const newSeed = Math.floor(100000 + Math.random() * 899999);
 
   try {
-    const lbSnap = await getDocs(collection(db, 'rooms', roomCode, 'leaderboard'));
+    const lbSnap = await getDocs(
+      query(
+        collection(db, 'rooms', roomCode, 'leaderboard'),
+        where('score', '>=', 1)
+      )
+    );
     const batch = writeBatch(db);
 
     const roomRef = doc(db, 'rooms', roomCode);
@@ -471,7 +512,12 @@ export async function closeRoom(
   players: PlayerData[]
 ): Promise<void> {
   try {
-    const lbSnap = await getDocs(collection(db, 'rooms', roomCode, 'leaderboard'));
+    const lbSnap = await getDocs(
+      query(
+        collection(db, 'rooms', roomCode, 'leaderboard'),
+        where('score', '>=', 1)
+      )
+    );
     const batch = writeBatch(db);
 
     players.forEach((p) => {
@@ -523,8 +569,12 @@ export function subscribeToPlayers(
   onPlayersUpdate: (players: PlayerData[]) => void
 ): Unsubscribe {
   const playersPath = `rooms/${roomCode}/players`;
-  return onSnapshot(
+  const playersQuery = query(
     collection(db, 'rooms', roomCode, 'players'),
+    where('roundNumber', '>=', 1)
+  );
+  return onSnapshot(
+    playersQuery,
     (snapshot) => {
       const list: PlayerData[] = [];
       snapshot.forEach((d) => {
@@ -545,6 +595,7 @@ export function subscribeToLeaderboard(
   const lbPath = `rooms/${roomCode}/leaderboard`;
   const lbQuery = query(
     collection(db, 'rooms', roomCode, 'leaderboard'),
+    where('score', '>=', 1),
     orderBy('score', 'desc'),
     limit(20)
   );

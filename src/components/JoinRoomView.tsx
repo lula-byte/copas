@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ArrowLeft, LogIn, Users } from 'lucide-react';
+import { formatFirebaseUserError } from '../services/firebaseService';
 import { joinRoom, RoomActionError } from '../services/roomManager';
 
 interface JoinRoomViewProps {
@@ -36,7 +37,12 @@ export function JoinRoomView({ onBack, onJoined }: JoinRoomViewProps) {
       if (err instanceof RoomActionError) {
         setError(err.message);
       } else {
-        setError('Gagal bergabung ke room. Periksa koneksi Anda dan coba lagi.');
+        setError(
+          formatFirebaseUserError(
+            err,
+            'Gagal bergabung ke room. Periksa koneksi Firebase Anda.'
+          )
+        );
       }
     } finally {
       setLoading(false);

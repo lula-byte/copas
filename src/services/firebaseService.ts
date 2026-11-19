@@ -65,14 +65,109 @@ if (isFirebaseConfigured) {
 export const db = dbInstance as Firestore;
 export const auth = authInstance as Auth;
 
+function sanitizeSensitiveText(text: string): string {
+  return text
+    .replace(/AIza[0-9A-Za-z_-]{20,}/g, '[REDACTED_KEY]')
+    .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer [REDACTED]')
+    .trim();
+}
+
+export function formatFirebaseUserError(
+  error: unknown,
+  fallbackMessage: string
+): string {
+  let rawMessage = '';
+  let errorCode = '';
+  let operationType = '';
+  let path = '';
+
+  if (error && typeof error === 'object' && 'code' in error) {
+    const codeVal = (error as { code?: unknown }).code;
+    if (typeof codeVal === 'string') {
+      errorCode = codeVal;
+    }
+  }
+
+  const msg = error instanceof Error ? error.message : String(error || '');
+  try {
+    const parsed = JSON.parse(msg) as Partial<FirestoreErrorInfo>;
+    if (parsed && typeof parsed.error === 'string') {
+      rawMessage = parsed.error;
+      operationType = parsed.operationType || '';
+      path = parsed.path || '';
+    } else {
+      rawMessage = msg;
+    }
+  } catch {
+    rawMessage = msg;
+  }
+
+  const lower = `${errorCode} ${rawMessage}`.toLowerCase();
+  const contextSuffix =
+    operationType && path ? ` (operasi: ${operationType} pada ${path})` : '';
+
+  if (
+    lower.includes('permission-denied') ||
+    lower.includes('missing or insufficient permissions')
+  ) {
+    return `Izin akses Firestore ditolak [permission-denied]${contextSuffix}. Pastikan Firestore Security Rules terbaru sudah aktif dan sesi autentikasi valid.`;
+  }
+
+  if (lower.includes('unauthenticated') || lower.includes('auth/')) {
+    return `Sesi autentikasi Firebase belum valid [${errorCode || 'unauthenticated'}]. Muat ulang halaman atau pastikan Anonymous Authentication aktif.`;
+  }
+
+  if (
+    lower.includes('unavailable') ||
+    lower.includes('client is offline') ||
+    lower.includes('network') ||
+    lower.includes('failed to fetch')
+  ) {
+    return `Koneksi ke server Firestore terputus atau offline [unavailable]. Periksa koneksi internet Anda lalu coba lagi.`;
+  }
+
+  if (lower.includes('not-found') || lower.includes('does not exist')) {
+    return `Database atau dokumen Firestore tidak ditemukan [not-found]${contextSuffix}. Periksa ID database Firestore pada konfigurasi proyek.`;
+  }
+
+  if (lower.includes('failed-precondition')) {
+    return `Prasyarat operasi Firestore belum terpenuhi [failed-precondition]${contextSuffix}.`;
+  }
+
+  if (lower.includes('resource-exhausted') || lower.includes('quota')) {
+    return `Batas kuota permintaan Firestore tercapai sementara [resource-exhausted]. Coba lagi beberapa saat.`;
+  }
+
+  if (lower.includes('deadline-exceeded') || lower.includes('aborted')) {
+    return `Permintaan ke Firestore habis waktu atau bentrok sementara [${errorCode || 'timeout'}]. Silakan coba lagi.`;
+  }
+
+  const safeDetail = sanitizeSensitiveText(rawMessage);
+  if (safeDetail) {
+    return `${fallbackMessage} Detail: ${safeDetail.slice(0, 180)}`;
+  }
+
+  return fallbackMessage;
+}
+
 export function handleFirestoreError(
   error: unknown,
   operationType: OperationType,
   path: string | null
 ): never {
   const currentUser = authInstance?.currentUser;
+  const rawErrMsg = error instanceof Error ? error.message : String(error);
+  const errCode =
+    error && typeof error === 'object' && 'code' in error
+      ? String((error as { code?: unknown }).code || '')
+      : '';
+  const combinedError =
+    errCode && !rawErrMsg.includes(errCode)
+      ? `[${errCode}] ${rawErrMsg}`
+      : rawErrMsg;
+
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: sanitizeSensitiveText(combinedError),
     authInfo: {
       userId: currentUser?.uid,
       email: currentUser?.email,
@@ -98,11 +193,25 @@ export async function testFirestoreConnection(): Promise<boolean> {
     await getDocFromServer(doc(dbInstance, 'test', 'connection'));
     return true;
   } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
+    const msg = error instanceof Error ? error.message : String(error);
+    const code =
+      error && typeof error === 'object' && 'code' in error
+        ? String((error as { code?: unknown }).code || '')
+        : '';
+
+    if (code === 'unavailable' || msg.includes('the client is offline')) {
       console.error('Please check your Firebase configuration (client is offline).');
       return false;
     }
-    // Permission error or missing doc still confirms online reachability
+    if (code === 'not-found' || msg.includes('does not exist')) {
+      console.error('Firestore database ID was not found:', msg);
+      return false;
+    }
+    if (code === 'permission-denied') {
+      console.warn('Firestore connection check returned permission-denied:', msg);
+      return true;
+    }
+    // Missing doc or other server responses still confirm online reachability
     return true;
   }
 }

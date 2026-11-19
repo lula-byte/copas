@@ -295,7 +295,9 @@ function GameApp() {
     <div className="min-h-screen bg-[#F5F9FF] text-slate-900">
       {(screen === 'landing' ||
         screen === 'solo-setup' ||
-        screen === 'leaderboards') && (
+        screen === 'leaderboards' ||
+        screen === 'create' ||
+        screen === 'join') && (
         <FirebaseSetupBanner
           authState={authState}
           errorMessage={authError}
